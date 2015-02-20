@@ -1,0 +1,82 @@
+---
+title: "A Mixture of Flexible Multivariate Distributions"
+output: html_document
+---
+
+In this document, I will compute the posterior distribution for $\beta_{j}$ using the derivation in the document `next Steps', where the prior on $\beta_{j}$ is modeled as a mixture of multivariate normals.
+
+```{r}
+tuto.dir=getwd()
+##' @param b.gp.hat PxR matrix of standardized effect sizes across all `R' tissue types,
+##' @param se.gp.hat RxR estimated covariance matrix of standardized standard errors, corresponding to the MLE of genotype effect for a given gene-SNP pair in all tissues
+##' @param t.stat PxR matrix of t statistics for each gene-snp Pair across all R tissues
+##' @param U.0kl RxR prior covariance matrix for posterior.covariance matrix K and weight l
+##' @param pi LxK matrix of prior weights estimated from the EM algorithm which correspond to optimal weighting of prior covariance matrix
+
+b.gp.hat=na.omit(read.table("16008genesnppairs_43tissues_beta.hat.std.txt",header=F,skip=1)[,-c(1,2)])
+se.gp.hat=na.omit(read.table("16008genesnppairs_43tissues_beta.hat.std.txt",header=F,skip=1)[,-c(1,2)])
+t.stat=na.omit(read.table("16008genesnppairs_43tissues_t.stat.txt",header=F,skip=1)[,-c(1,2)])
+
+X.t=as.matrix(t.stat)
+X.c=as.matrix(t.stat-colMeans(t.stat))##Column centered matrix of t statistics
+```
+
+Now, we need to load in the prior matrices which we will try to find the optimal combination. First we load in the `L' RxR prior covariance matrices specifying the stretch along the axes defined by the covariance matrix.
+```{r load.prior.grid}
+##' @param omega2 is Lx1 vector of 'stretch' parameters which represent fixed effect case
+##' @return L-dim list of RxR matrices with stretch omega in entries
+
+```
+
+It is also necessary, for a given grid weight $\omega^{2}$, to have a function to get the prior covariance matrix for a given prior covariance matrix $U_{0k}$, $U_{0kl}$:
+
+```{r prior.covar}
+##' @param R tissues from which to estimate covariance matrices
+##' @param X.c a matrix of column center tstatistics
+##' @param K number of PCs to keep in approximation
+##' @return return (right now, 3) component list but ultimately K factors + 3 sop up and approximation matrices
+get.prior.covar.U.0=function(R,X.c,P,omega){
+  
+  U.0.=list()
+  U.0.[[1]]=diag(1,R) ## the first covariance matrix will be the 'sopped up' 
+  U.0.[[2]]=omega*t(X.c)%*%X.c
+  svd.X=svd(X.t)##perform SVD on uncentered matrix
+  v=svd.X$v;u=svd.X$u;d=svd.X$d
+  
+cov.pc=1/P*v[,1:p]%*%diag(d[1:p])%*%t(v[,1:p])##Use the rank P summary representation  
+  
+  U.0.[[3]]=omega*cov.pc
+return(U.0.)}
+
+##' @param function to return the K component list of prior covariance matrices
+##' @param X.c a matrix of column center tstatistics
+##' @param K number of PCs to keep in approximation
+##' @return return L dimensional list of K dimensional lists where each L,K contains the Lth grid component times the K covariance matrix
+
+
+U.0kl=lapply(seq(1:L),function(l){ ##For each element of omega, computes the J covariance matrices
+  omega=read.table("~/omega2.txt")[l,]
+ get.prior.covar.U.0(R,X.c,P=13,omega)
+})
+
+```
+
+Now that we have the prior covariance matrices, we can maximise the likelihood.
+
+```{r}
+Compute a likelihood using the prior covariance matrix for each gene SNP pair
+
+lik.i=list()
+lapply(1:10,function(i){
+  b.mle=b.gp.hat[i,]
+  V.gp.hat=diag(se.gp.hat[i,])^2
+
+   lik=matrix(NA,nrow=K,ncol=L)
+ for(l in 1:L){
+for (k in 1:K){
+  lik[k,l]=dmvnorm(x=b.mle, sigma=U.0kl[[l]][[k]] + V.gp.hat)
+  }}
+   lik.i[[i]] = lik
+})
+
+```

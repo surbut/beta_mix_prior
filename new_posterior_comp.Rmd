@@ -1,6 +1,6 @@
 ---
 title: "A Mixture of Flexible Multivariate Distributions"
-output: html_document
+output: pdf_document
 ---
 
 In this document, I will compute the posterior distribution for $\beta_{j}$ using the derivation in the document `next Steps', where the prior on $\beta_{j}$ is modeled as a mixture of multivariate normals.
@@ -16,58 +16,68 @@ tuto.dir=getwd()
 b.gp.hat=na.omit(read.table("16008genesnppairs_43tissues_beta.hat.std.txt",header=F,skip=1)[,-c(1,2)])
 se.gp.hat=na.omit(read.table("16008genesnppairs_43tissues_beta.hat.std.txt",header=F,skip=1)[,-c(1,2)])
 t.stat=na.omit(read.table("16008genesnppairs_43tissues_t.stat.txt",header=F,skip=1)[,-c(1,2)])
-
+L = #(number of grid weights to use)
+R=ncol(b.gp.hat)#number of tissues
 X.t=as.matrix(t.stat)
-X.c=as.matrix(t.stat-colMeans(t.stat))##Column centered matrix of t statistics
+X.c=apply(X.t,2,function(x) x-mean(x)) ##Column centered matrix of t statistics
+#colMeans(X.c)
 ```
 
-Now, we need to load in the prior matrices which we will try to find the optimal combination. First we load in the `L' RxR prior covariance matrices specifying the stretch along the axes defined by the covariance matrix.
-```{r load.prior.grid}
-##' @param omega2 is Lx1 vector of 'stretch' parameters which represent fixed effect case
-##' @return L-dim list of RxR matrices with stretch omega in entries
-
-```
-
-It is also necessary, for a given grid weight $\omega^{2}$, to have a function to get the prior covariance matrix for a given prior covariance matrix $U_{0k}$, $U_{0kl}$:
+Now, we need to load in the prior matrices which we will try to find the optimal combination. First we load in the `K' RxR prior covariance matrices specifying the relative importance of a particular tissue direction in each component.
 
 ```{r prior.covar}
 ##' @param R tissues from which to estimate covariance matrices
 ##' @param X.c a matrix of column center tstatistics
 ##' @param K number of PCs to keep in approximation
-##' @return return (right now, 3) component list but ultimately K factors + 3 sop up and approximation matrices
+##' @return return K component list of covariance matrices (SFA or SVD approximations)
 get.prior.covar.U.0=function(R,X.c,P,omega){
   
   U.0.=list()
-  U.0.[[1]]=diag(1,R) ## the first covariance matrix will be the 'sopped up' 
-  U.0.[[2]]=omega*t(X.c)%*%X.c
+  U.0.[[1]]=omega*diag(1,R)# the first covariance matrix will be the 'sopped up' identity
+  U.0.[[2]]=omega*(t(X.c)%*%X.c)/(nrow(X.c))
   svd.X=svd(X.t)##perform SVD on uncentered matrix
   v=svd.X$v;u=svd.X$u;d=svd.X$d
   
-cov.pc=1/P*v[,1:p]%*%diag(d[1:p])%*%t(v[,1:p])##Use the rank P summary representation  
+cov.pc=1/P*v[,1:P]%*%diag(d[1:P])%*%t(v[,1:P])##Use the rank P summary representation  
   
   U.0.[[3]]=omega*cov.pc
 return(U.0.)}
 
+U.0=get.prior.covar.U.0(R,X.c,13,omega)
+```
+
+Now, for every prior covariance matrix $U_{k}$, we compute L `stretches' specifying the width of this distribution.
+
+```{r Get L stretches}
 ##' @param function to return the K component list of prior covariance matrices
 ##' @param X.c a matrix of column center tstatistics
 ##' @param K number of PCs to keep in approximation
 ##' @return return L dimensional list of K dimensional lists where each L,K contains the Lth grid component times the K covariance matrix
 
-
-U.0kl=lapply(seq(1:L),function(l){ ##For each element of omega, computes the J covariance matrices
+get.prior.covar.Ukl=function(P){
+  U.0kl=lapply(seq(1:L),function(l){ ##For each element of omega, computes the J covariance matrices
   omega=read.table("~/omega2.txt")[l,]
- get.prior.covar.U.0(R,X.c,P=13,omega)
+get.prior.covar.U.0(R,X.c,P,omega)
 })
+return(U.0kl)}
 
 ```
 
-Now that we have the prior covariance matrices, we can maximise the likelihood.
+Now that we have the prior covariance matrices, we can maximize the likelihood $L(\pi;\hat\beta_{j},se_{j})$ by computing $Pr(\hat \beta_{j} | Component k,l)$ for each gene componenet at each each gene SNP pair and then finding the optimal combination among all gene SNP pairs.
 
-```{r}
-Compute a likelihood using the prior covariance matrix for each gene SNP pair
+```{r,echo=TRUE,cache=TRUE}
+##' @return Compute a likelihood using the prior covariance matrix for each gene SNP pair
+##' @param U.0kl K element list of L element list with prior covairnace matrix fo reach 
 
-lik.i=list()
-lapply(1:10,function(i){
+U.0kl=get.prior.covar.Ukl(13)
+#U.0kl[[L+1]]=diag(1,R) ##Add the identity matrix to the list 
+K=3
+L=2
+library("mvtnorm")
+likelihood=function(b.gp.hat,se.gp.hat)
+  {
+  lik.i=list()
+lapply(1:nrow(b.gp.hat),function(i){
   b.mle=b.gp.hat[i,]
   V.gp.hat=diag(se.gp.hat[i,])^2
 
@@ -77,6 +87,41 @@ for (k in 1:K){
   lik[k,l]=dmvnorm(x=b.mle, sigma=U.0kl[[l]][[k]] + V.gp.hat)
   }}
    lik.i[[i]] = lik
-})
+})}
+
+##` @return global.lik Computes the likelihood matrices for each componenet for each of j gene snp pairs
+##' @return global.sum Sums the likelihood for each component across j gene snp pairs
+##' @return global.norm Sums the likelihood for all components across all j pairs
+updated.weights=function(b.gp.hat,se.gp.hat){
+  global.lik=likelihood(b.gp.hat,se.gp.hat)
+global.sums=Reduce('+', likelihood(b.gp.hat,se.gp.hat)) ##This sums all matrices, so we get one KxL matrix with the relative importance of this component
+global.norm=Reduce('+',lapply(global.lik,sum)) 
+return(updated.weights=global.sums/global.norm)}
+
+names.vec=matrix(NA,nrow=K,ncol=L)
+  for(l in 1:L){ 
+    for(k in 1:K){
+      names.vec[k,l]=paste0("k=",k,";l=",l)}}
+
+x=updated.weights(b.gp.hat,se.gp.hat)
+barplot(as.vector(x),names=as.vector(names.vec),main="Normalized Likelihood at Each Component")
+##Test with prior weights as 1/31
+pi=rep(1/length(K*L),K*L)
 
 ```
+Here, I've plotted the relative importance of each component after one iteration with a uniform prior weight on each $\pi$.
+
+Recall:
+
+$$L(\beta_{j};k,l) = Pr(\hat{b}_{j} | k,l)$$
+$$=Pr(\hat{b}_{j}; 0, \omega^{2}_{l} U_{k} + \hat {V})$$
+
+
+
+$$w_{jkl} = \frac{\pi_{k,l} L(\beta_{j};k,l)}{\sum_{k,l} \pi_{k,l} L(\beta_{j};k,l)}$$
+
+
+We can then update our estimate of $\pi_{k,l}$ as 
+
+
+$$\pi_{kl}^{i+1} = \frac{\sum_{j} w_{jkl}}{\sum_{j,k,l} w_{jkl}}$$

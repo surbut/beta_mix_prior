@@ -1,6 +1,6 @@
 ---
 title: "A Mixture of Flexible Multivariate Distributions"
-output: pdf_document
+output: html_document
 ---
 
 In this document, I will compute the posterior distribution for $\beta_{j}$ using the derivation in the document `next Steps', where the prior on $\beta_{j}$ is modeled as a mixture of multivariate normals.
@@ -43,7 +43,7 @@ cov.pc=1/P*v[,1:P]%*%diag(d[1:P])%*%t(v[,1:P])##Use the rank P summary represent
   U.0.[[3]]=omega*cov.pc
 return(U.0.)}
 
-U.0=get.prior.covar.U.0(R,X.c,13,omega)
+U.0=get.prior.covar.U.0(R,X.c,13,omega=0.2)
 ```
 
 Now, for every prior covariance matrix $U_{k}$, we compute L `stretches' specifying the width of this distribution.
@@ -54,9 +54,11 @@ Now, for every prior covariance matrix $U_{k}$, we compute L `stretches' specify
 ##' @param K number of PCs to keep in approximation
 ##' @return return L dimensional list of K dimensional lists where each L,K contains the Lth grid component times the K covariance matrix
 
-get.prior.covar.Ukl=function(P){
+omega.table=read.table("~/Dropbox/cyclingstatistician/beta_gp_continuous/omega2.txt")
+
+get.prior.covar.Ukl=function(P,L,R){
   U.0kl=lapply(seq(1:L),function(l){ ##For each element of omega, computes the J covariance matrices
-  omega=read.table("~/omega2.txt")[l,]
+  omega=omega.table[l,]
 get.prior.covar.U.0(R,X.c,P,omega)
 })
 return(U.0kl)}
@@ -66,35 +68,139 @@ return(U.0kl)}
 Now that we have the prior covariance matrices, we can maximize the likelihood $L(\pi;\hat\beta_{j},se_{j})$ by computing $Pr(\hat \beta_{j} | Component k,l)$ for each gene componenet at each each gene SNP pair and then finding the optimal combination among all gene SNP pairs.
 
 ```{r,echo=TRUE,cache=TRUE}
-##' @return Compute a likelihood using the prior covariance matrix for each gene SNP pair
-##' @param U.0kl K element list of L element list with prior covairnace matrix fo reach 
-
-U.0kl=get.prior.covar.Ukl(13)
-#U.0kl[[L+1]]=diag(1,R) ##Add the identity matrix to the list 
+##' @return Compute a likelihood using the prior covariance matrix for each gene SNP pair in the rows and componenets in the columns
+##' @param b.gp.hat and se.gp.hat matrix of MLES for all J gene snp pairs
+##' 
+##' @param U.0kl L dimensional list of K dimensional list with prior covairnace matrix for each grid weight, prior covariance pair
 K=3
 L=2
+R=43
+U.0kl=get.prior.covar.Ukl(P=13,L,R)
+#U.0kl[[L+1]]=diag(1,R) ##Add the identity matrix to the list 
+
+##J = Number of gene-snp pairs to consider
 library("mvtnorm")
-likelihood=function(b.gp.hat,se.gp.hat)
+likelihood=function(b.gp.hat,se.gp.hat,J=nrow(b.gp.hat))
   {
   lik.i=list()
-lapply(1:nrow(b.gp.hat),function(i){
-  b.mle=b.gp.hat[i,]
-  V.gp.hat=diag(se.gp.hat[i,])^2
+lapply(seq(1:J),function(j){
+  b.mle=b.gp.hat[j,]
+  V.gp.hat=diag(se.gp.hat[j,])^2
 
    lik=matrix(NA,nrow=K,ncol=L)
  for(l in 1:L){
 for (k in 1:K){
   lik[k,l]=dmvnorm(x=b.mle, sigma=U.0kl[[l]][[k]] + V.gp.hat)
   }}
-   lik.i[[i]] = lik
+   lik.i[[j]] = as.vector(lik) ## concatenates column by column (e.g., [K=1,1],[K=2,1],[K=3,1],[2,1])
+
+
 })}
 
-##` @return global.lik Computes the likelihood matrices for each componenet for each of j gene snp pairs
+##Likelihood of each component in cols, gene=snp pairs in rows##
+global.lik=matrix(unlist(likelihood(b.gp.hat,se.gp.hat)),ncol=K*L,byrow=TRUE)
+
+
+
+```
+Now, to use the EM algorithm:
+
+```{r, echo=FALSE,cache=TRUE}
+ #@details Fits a k component mixture model \deqn{f(x|\pi) = \sum_k \pi_k f_k(x)} to independent
+#' and identically distributed data \eqn{x_1,\dots,x_n}. 
+#' Estimates posterior on mixture proportions \eqn{\pi} by Variational Bayes, 
+#' with a Dirichlet prior on \eqn{\pi}. 
+#' Algorithm adapted from Bishop (2009), Pattern Recognition and Machine Learning, Chapter 10.
+#' 
+#' @param matrix_lik a n by k matrix with (j,k)th element equal to \eqn{f_k(x_j)}.
+#' @param prior a k vector of the parameters of the Dirichlet prior on \eqn{\pi}. Recommended to be rep(1,k)
+#' @param pi.init the initial value of the posterior parameters. If not specified defaults to the prior parameters.
+#' @param control A list of control parameters for the SQUAREM algorithm, default value is set to be   control.default=list(K = 1, method=3, square=TRUE, step.min0=1, step.max0=1, mstep=4, kr=1, objfn.inc=1,tol=1.e-07, maxiter=5000, trace=FALSE). 
+#' 
+#' @return A list, whose components include point estimates (pihat), 
+#' the parameters of the fitted posterior on \eqn{\pi} (pipost),
+#' the bound on the log likelihood for each iteration (B)
+#' and a flag to indicate convergence (converged).
+#'  
+#' @export
+#' 
+
+library(SQUAREM)
+mixEM = function(matrix_lik,prior,pi.init=NULL,control=list()){
+  control.default=list(K = 1, method=3, square=TRUE, step.min0=1, step.max0=1, mstep=4, kr=1, objfn.inc=1,tol=1.e-07, maxiter=5000, trace=FALSE)
+  namc=names(control)
+  if (!all(namc %in% names(control.default))) 
+    stop("unknown names in control: ", namc[!(namc %in% names(control.default))])
+  controlinput=modifyList(control.default, control)
+  
+  k=dim(matrix_lik)[2]
+  if(is.null(pi.init)){
+    pi.init = rep(1/k,k)# Use as starting point for pi
+  } 
+  res = squarem(par=pi.init,fixptfn=fixpoint, objfn=negpenloglik,matrix_lik=matrix_lik, prior=prior, control=controlinput)
+  return(list(pihat = normalize(pmax(0,res$par)), B=res$value.objfn, 
+              niter = res$iter, converged=res$convergence))
+}
+
+# helper functions used by mixEM
+normalize = function(x){return(x/sum(x))}
+
+fixpoint = function(pi, matrix_lik, prior){  
+  pi = normalize(pmax(0,pi)) #avoid occasional problems with negative pis due to rounding
+  m  = t(pi * t(matrix_lik)) # matrix_lik is n by k; so this is also n by k
+  m.rowsum = rowSums(m)
+  classprob = m/m.rowsum #an n by k matrix
+  pinew = normalize(colSums(classprob) + prior - 1)
+  return(pinew)
+}
+
+negpenloglik = function(pi,matrix_lik,prior){return(-penloglik(pi,matrix_lik,prior))}
+
+penloglik = function(pi, matrix_lik, prior){
+  pi = normalize(pmax(0,pi))
+  m  = t(pi * t(matrix_lik)) # matrix_lik is n by k; so this is also n by k
+  m.rowsum = rowSums(m)
+  loglik = sum(log(m.rowsum))
+  subset = (prior != 1.0)
+  priordens = sum((prior-1)[subset]*log(pi[subset]))
+  return(loglik+priordens)
+}
+
+#The kth element of this vector is the derivative 
+#of the loglik for $\pi=(\pi_0,...,1-\pi_0,...)$ with respect to $\pi_0$ at $\pi_0=1$.
+gradient = function(matrix_lik){
+  n = nrow(matrix_lik)
+  grad = n - colSums(matrix_lik/matrix_lik[,1]) 
+  return(grad)
+}
+```
+
+```{r}
+pis=mixEM(matrix_lik=global.lik,prior=rep(1,K*L))
+names.vec=matrix(NA,nrow=K,ncol=L)
+  for(l in 1:L){ 
+    for(k in 1:K){
+      names.vec[k,l]=paste0("k=",k,";l=",l)}}
+
+barplot(pis$pihat,names=as.vector(names.vec),main="mixEM estimated pi")
+```
+
+We can see that the majority of the weight is put on the covariance matrix of t statistics, $X_{t}'X$ and the estimated covariance matrix, $V_{t,1..P}\lambda V_{t,1..P}'$.
+ 
+I compare with naiive iteration, which simply weights the relative likelihood across individuals.
+
+```{r,cache=TRUE}
+##' @param global.lik Computes the likelihood matrices for each componenet for each of j gene snp pairs
 ##' @return global.sum Sums the likelihood for each component across j gene snp pairs
 ##' @return global.norm Sums the likelihood for all components across all j pairs
+
+
+library("mvtnorm")
+
 updated.weights=function(b.gp.hat,se.gp.hat){
-  global.lik=likelihood(b.gp.hat,se.gp.hat)
-global.sums=Reduce('+', likelihood(b.gp.hat,se.gp.hat)) ##This sums all matrices, so we get one KxL matrix with the relative importance of this component
+  #global.lik=likelihood(b.gp.hat,se.gp.hat)
+  global.sums=Reduce('+', likelihood(b.gp.hat,se.gp.hat)) ##This sums all matrices, so we get one KxL matrix with the relative importance of this component
+ 
 global.norm=Reduce('+',lapply(global.lik,sum)) 
 return(updated.weights=global.sums/global.norm)}
 
@@ -121,7 +227,7 @@ $$=Pr(\hat{b}_{j}; 0, \omega^{2}_{l} U_{k} + \hat {V})$$
 $$w_{jkl} = \frac{\pi_{k,l} L(\beta_{j};k,l)}{\sum_{k,l} \pi_{k,l} L(\beta_{j};k,l)}$$
 
 
-We can then update our estimate of $\pi_{k,l}$ as 
+We can then update our estimate of $\pi_{k,l}$ 
 
 
 $$\pi_{kl}^{i+1} = \frac{\sum_{j} w_{jkl}}{\sum_{j,k,l} w_{jkl}}$$

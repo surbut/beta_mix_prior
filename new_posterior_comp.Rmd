@@ -72,6 +72,8 @@ Now that we have the prior covariance matrices, we can maximize the likelihood $
 ##' @param b.gp.hat and se.gp.hat matrix of MLES for all J gene snp pairs
 ##' 
 ##' @param U.0kl L dimensional list of K dimensional list with prior covairnace matrix for each grid weight, prior covariance pair
+#install.packages("SQUAREM") note you'll need to have SQUAREM installed
+library("SQUAREM")
 K=3
 L=2
 R=43
@@ -176,12 +178,16 @@ gradient = function(matrix_lik){
 ```
 
 ```{r}
+#install.packages("SQUAREM")
+library("SQUAREM")
 pis=mixEM(matrix_lik=global.lik,prior=rep(1,K*L))
 names.vec=matrix(NA,nrow=K,ncol=L)
   for(l in 1:L){ 
     for(k in 1:K){
       names.vec[k,l]=paste0("k=",k,";l=",l)}}
 
+write.table((cbind(as.vector(names.vec),pis$pihat)),quote=FALSE,file="piklhat.txt")
+pi.hat=read.table(file="piklhat.txt")
 barplot(pis$pihat,names=as.vector(names.vec),main="mixEM estimated pi")
 ```
 
@@ -231,3 +237,131 @@ We can then update our estimate of $\pi_{k,l}$
 
 
 $$\pi_{kl}^{i+1} = \frac{\sum_{j} w_{jkl}}{\sum_{j,k,l} w_{jkl}}$$
+
+##Posterior computation#
+
+Now that we have the hierarchical weights $\pi_{k,l}$, we can compute the posterior distribution for each component.
+
+For a given prior covariance matrix, compute posterior covariance and posterior mean. Here, let U.0k.l represent a specific matrix in U.0kl (.e.g, $U.0kl[[l]][[k]]$)
+
+```{r}
+
+##' @param U.0k.l let U.0k.l represent a specific matrix in U.0kl (.e.g, U.0kl[[l]][[k]])
+post.b.gpkl.cov <- function(V.gp.hat.inv, U.0k.l){
+        U.gp1kl <- U.0k.l %*% solve(V.gp.hat.inv %*% U.0k.l + diag(nrow(U.0k.l)))
+            return(U.gp1kl)
+    }
+
+post.b.gpkl.mean <- function(b.mle, V.gp.hat.inv, U.gp1kl){
+        mu.gp1kl <- U.gp1kl %*% V.gp.hat.inv %*% b.mle
+            return(mu.gp1kl)
+    }
+```
+
+We also need to compute the "posterior weights" corresponding to each prior covariance matrix, which is simply the likelihood evaluated at that componenet times the prior weigth, $pi_{k,l}$ normalized by the marginal likelihood over all components.
+
+$p(k=1,l=1|D)=$
+$\frac{p(D|k=1,l=1)*p(k=1,l=1)}{p(D)}$
+
+```{r}
+##' @param pi.hat = matrix of prior weights
+##' @return a vector of posterior weights
+pis=pi.hat[,2]
+post.weight.func=function(pis,U.0kl,V.gp.hat,b.mle){
+post.weight.num = matrix(NA,nrow=K,ncol=L)
+for(k in 1:K){
+for(l in 1:L){
+  wts=matrix(pis,nrow=3,ncol=2)
+  pi=wts[k,l]
+  post.weight.num[k,l]=pi*dmvnorm(x=b.mle, sigma=U.0kl[[l]][[k]] + V.gp.hat)}
+}
+post.weight=post.weight.num/sum(post.weight.num)
+return(as.vector(post.weight))}
+
+```
+
+Now, for each gene-snp pair $j$ and each prior covariance matrix $U_{0kl}$ I will generate a 43 x 43 posterior covariance matrix and 43 x 1 vector of posterior means.
+
+```{r postmeanandcovars, cache=TRUE}
+##' @param U.0kl = l dimensional list of k dimensional list of prior covariance matrices
+##' @returm all, a J dimensional list of k dimensional lists of L dimensional list of posterior mean and covariance matrices.
+##' @returm post.weight.matrix a J x (K*L) matrix of posterior weights coresponding to p(J,L|D) for each gene-snp Pair
+
+
+all.covs=list()
+all.means=list()
+J=dim(b.gp.hat)[1]
+#lapply(seq(1:J),function(j){
+  for(j in 1:J){
+    b.mle=as.vector(t(b.gp.hat[j,]))##turn i into a 43 x 1 vector
+    V.gp.hat=diag(se.gp.hat[j,])^2
+    all.covs[[j]]=list()
+    all.means[[j]]=list()
+    temp.mean=matrix(NA,nrow=)
+
+            V.gp.hat.inv <- solve(V.gp.hat)
+          for(k in 1:K){
+            all.covs[[j]][[k]]=list()
+            all.means[[j]][[k]]=list()
+            for (l in 1:L){
+                  all.means[[j]][[k]][[l]]=list()
+                    all.covs[[j]][[k]][[l]]=list()
+                  U.gp1kl <- post.b.gpkl.cov(V.gp.hat.inv, U.0kl[[l]][[k]]) ## returns an R*R posterior covariance matrix for jth gene snp pair
+                  mu.gp1kl <- post.b.gpkl.mean(b.mle, V.gp.hat.inv, U.gp1kl) ##return a 1 * R vector of posterior means for a given prior covariance matrix
+                  all.means[[j]][[k]][[l]]=mu.gp1kl
+                  all.covs[[j]][[k]][[l]]=U.gp1kl
+                      }
+           }}
+
+```
+
+Now, for each of the $J$ gene-snp pairs we generate a matrix of posterior weight matrix. Remember, this will not be tissue specific information, so we need to do it only once and can store in an Jx(K*L) matrix
+
+```{r postweightmatrix}
+library("mvtnorm")
+post.weight.matrix=matrix(NA,nrow=J,ncol=L*K)
+J=dim(b.gp.hat)[1]
+
+
+for(j in 1:J){
+    b.mle=as.vector(t(b.gp.hat[j,]))##turn i into a 43 x 1 vector
+    V.gp.hat=diag(se.gp.hat[j,])^2
+    pis=pi.hat[,2]
+    U.0kl=U.0kl
+    post.weight.matrix[j,]=as.vector(post.weight.func(pis,U.0kl,V.gp.hat,b.mle))
+}
+
+```
+
+
+```{r,echo=FALSE,eval=TRUE}
+
+files=list.files(path="/Users/sarahurbut/Dropbox/cyclingstatistician/filtered/",pattern="_filter.txt")
+names=NULL
+      for(i in 1:length(files)){
+            a=strsplit(files[i], '[.]')[[1]][1]
+                                 names[i]=(strsplit(a, '[_]')[[1]][1])
+                                                       }
+```
+We can compute the overall posterior mean for each gene-SNP pair across tissues (i.e., the weighted $R$ dimensional posterior mean vector of $mu_{j}$). Here, I do it for 10 gene SNP pairs.
+```{r,cache=TRUE}
+J=10
+for(j in 1:J){
+post.means=matrix(NA,nrow=J,ncol=R)
+mean.list=all.means[[j]]
+post.weights=post.weight.matrix[j,]
+post.weight.mat=matrix(post.weights,nrow=3,ncol=2)
+post.weight.mat[is.na(post.weight.mat)] <- 0
+
+temp=NULL
+for(k in 1:K){
+for(l in 1:L){
+temp=rbind(as.vector(post.weight.mat[k,l]*mean.list[[k]][[l]]),temp)##creates a 6x43 matrix of posterior means, but inverted (which is ok because we simply sum)
+}
+}
+post.means[j,]=t(colSums(temp))
+
+plot(post.means[j,],main=paste0("PostTissueMeans,B_",j))
+text(post.means[j,],labels=names)
+}
+```

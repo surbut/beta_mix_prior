@@ -14,54 +14,46 @@ tuto.dir=getwd()
 ##' @param pi LxK matrix of prior weights estimated from the EM algorithm which correspond to optimal weighting of prior covariance matrix
 
 b.gp.hat=na.omit(read.table("16008genesnppairs_43tissues_beta.hat.std.txt",header=F,skip=1)[,-c(1,2)])
-se.gp.hat=na.omit(read.table("16008genesnppairs_43tissues_beta.hat.std.txt",header=F,skip=1)[,-c(1,2)])
+se.gp.hat=na.omit(read.table("16008genesnppairs_43tissues_sigma.hat.std.txt",header=F,skip=1)[,-c(1,2)])
 t.stat=na.omit(read.table("16008genesnppairs_43tissues_t.stat.txt",header=F,skip=1)[,-c(1,2)])
-L = #(number of grid weights to use)
+L = 2
 R=ncol(b.gp.hat)#number of tissues
 X.t=as.matrix(t.stat)
 X.c=apply(X.t,2,function(x) x-mean(x)) ##Column centered matrix of t statistics
+R=ncol(X.t)
+M=nrow(X.t)
 #colMeans(X.c)
 ```
 
-Now, we need to load in the prior matrices which we will try to find the optimal combination. First we load in the `K' RxR prior covariance matrices specifying the relative importance of a particular tissue direction in each component.
+Now, we need to load in the prior matrices which we will try to find the optimal combination. First we load in the `K' RxR prior covariance matrices specifying the relative importance of a particular tissue direction in each component. Now, for every prior covariance matrix $U_{k}$, we compute L `stretches' specifying the width of this distribution. Thus for each stretch $\omega$, there will be K corresponding covariance matrices.
 
 ```{r prior.covar}
-##' @param R tissues from which to estimate covariance matrices
+##' @param function to return the LxK component list of prior covariance matrices
 ##' @param X.c a matrix of column center tstatistics
-##' @param K number of PCs to keep in approximation
-##' @return return K component list of covariance matrices (SFA or SVD approximations)
-get.prior.covar.U.0=function(R,X.c,P,omega){
-  
-  U.0.=list()
-  U.0.[[1]]=omega*diag(1,R)# the first covariance matrix will be the 'sopped up' identity
-  U.0.[[2]]=omega*(t(X.c)%*%X.c)/(nrow(X.c))
-  svd.X=svd(X.t)##perform SVD on uncentered matrix
-  v=svd.X$v;u=svd.X$u;d=svd.X$d
-  
-cov.pc=1/P*v[,1:P]%*%diag(d[1:P])%*%t(v[,1:P])##Use the rank P summary representation  
-  
-  U.0.[[3]]=omega*cov.pc
-return(U.0.)}
-
-U.0=get.prior.covar.U.0(R,X.c,13,omega=0.2)
-```
-
-Now, for every prior covariance matrix $U_{k}$, we compute L `stretches' specifying the width of this distribution.
-
-```{r Get L stretches}
-##' @param function to return the K component list of prior covariance matrices
-##' @param X.c a matrix of column center tstatistics
-##' @param K number of PCs to keep in approximation
+##' @param P number of PCs to keep in approximation
+##' @param omega.table dataframe of stretches
 ##' @return return L dimensional list of K dimensional lists where each L,K contains the Lth grid component times the K covariance matrix
 
 omega.table=read.table("~/Dropbox/cyclingstatistician/beta_gp_continuous/omega2.txt")
 
+
 get.prior.covar.Ukl=function(P,L,R){
-  U.0kl=lapply(seq(1:L),function(l){ ##For each element of omega, computes the J covariance matrices
-  omega=omega.table[l,]
-get.prior.covar.U.0(R,X.c,P,omega)
-})
-return(U.0kl)}
+  test=list()
+  for(l in 1:L){
+  test[[l]]=list()
+    omega=omega.table[l,]
+    test[[l]][[1]]=omega*diag(1,R)# the first covariance matrix will be the 'sopped up' identity
+    test[[l]][[2]]=omega*(t(X.c)%*%X.c)/M
+
+     
+  svd.X=svd(X.c)##perform SVD on sample centered
+  #svd.X=svd(X.t)##peform SCD on unsample centered (same result for v)
+  v=svd.X$v;u=svd.X$u;d=svd.X$d
+  
+  cov.pc=1/M*v[,1:P]%*%diag(d[1:P])%*%t(v[,1:P])##Use the rank P summary representation  
+  
+  test[[l]][[3]]=omega*cov.pc}
+return(U.0kl=test)}
 
 ```
 
@@ -74,13 +66,15 @@ Now that we have the prior covariance matrices, we can maximize the likelihood $
 ##' @param U.0kl L dimensional list of K dimensional list with prior covairnace matrix for each grid weight, prior covariance pair
 #install.packages("SQUAREM") note you'll need to have SQUAREM installed
 library("SQUAREM")
-K=3
+
 L=2
 R=43
 U.0kl=get.prior.covar.Ukl(P=13,L,R)
+K=length(U.0kl[[1]])
 #U.0kl[[L+1]]=diag(1,R) ##Add the identity matrix to the list 
 
 ##J = Number of gene-snp pairs to consider
+##' @return likelihood a function to return a J dimensional list of KxL vectors of likelihoods for each component
 library("mvtnorm")
 likelihood=function(b.gp.hat,se.gp.hat,J=nrow(b.gp.hat))
   {
@@ -191,7 +185,7 @@ pi.hat=read.table(file="piklhat.txt")
 barplot(pis$pihat,names=as.vector(names.vec),main="mixEM estimated pi")
 ```
 
-We can see that the majority of the weight is put on the covariance matrix of t statistics, $X_{t}'X$ and the estimated covariance matrix, $V_{t,1..P}\lambda V_{t,1..P}'$.
+We can see that the majority of the weight is put on the covariance matrix of t statistics, $X_{t}'X$ and the estimated covariance matrix, $V_{t,1..K}\lambda V_{t,1..K}'$ where here I use K = 13. Recall each V is a $43$ x $1$ vector. 
  
 I compare with naiive iteration, which simply weights the relative likelihood across individuals.
 
@@ -203,11 +197,9 @@ I compare with naiive iteration, which simply weights the relative likelihood ac
 
 library("mvtnorm")
 
-updated.weights=function(b.gp.hat,se.gp.hat){
-  #global.lik=likelihood(b.gp.hat,se.gp.hat)
-  global.sums=Reduce('+', likelihood(b.gp.hat,se.gp.hat)) ##This sums all matrices, so we get one KxL matrix with the relative importance of this component
- 
-global.norm=Reduce('+',lapply(global.lik,sum)) 
+updated.weights=function(b.gp.hat,se.gp.hat,global.lik){
+    global.sums=as.matrix(colSums(global.lik))#relative importance of each componenet across all gene-snp pairs
+  global.norm=sum(global.sums)
 return(updated.weights=global.sums/global.norm)}
 
 names.vec=matrix(NA,nrow=K,ncol=L)
@@ -215,10 +207,9 @@ names.vec=matrix(NA,nrow=K,ncol=L)
     for(k in 1:K){
       names.vec[k,l]=paste0("k=",k,";l=",l)}}
 
-x=updated.weights(b.gp.hat,se.gp.hat)
+x=updated.weights(b.gp.hat,se.gp.hat,global.lik)
 barplot(as.vector(x),names=as.vector(names.vec),main="Normalized Likelihood at Each Component")
-##Test with prior weights as 1/31
-pi=rep(1/length(K*L),K*L)
+
 
 ```
 Here, I've plotted the relative importance of each component after one iteration with a uniform prior weight on each $\pi$.
@@ -317,7 +308,7 @@ J=dim(b.gp.hat)[1]
 
 Now, for each of the $J$ gene-snp pairs we generate a matrix of posterior weight matrix. Remember, this will not be tissue specific information, so we need to do it only once and can store in an Jx(K*L) matrix
 
-```{r postweightmatrix}
+```{r postweightmatrix,cache=TRUE}
 library("mvtnorm")
 post.weight.matrix=matrix(NA,nrow=J,ncol=L*K)
 J=dim(b.gp.hat)[1]
@@ -334,7 +325,7 @@ for(j in 1:J){
 ```
 
 
-```{r,echo=FALSE,eval=TRUE}
+```{r,echo=FALSE,eval=TRUE,cache=TRUE}
 
 files=list.files(path="/Users/sarahurbut/Dropbox/cyclingstatistician/filtered/",pattern="_filter.txt")
 names=NULL
@@ -360,8 +351,70 @@ temp=rbind(as.vector(post.weight.mat[k,l]*mean.list[[k]][[l]]),temp)##creates a 
 }
 }
 post.means[j,]=t(colSums(temp))
+#pdf(paste0("PostTissueMeans,B_",j))
+barplot(post.means[j,],main=paste0("PostTissueMeans,B_",j),col=c(1:43))
+text(post.means[j,],labels=names, srt=45, pos=1,col=c(1:43))
+#dev.off()
 
-plot(post.means[j,],main=paste0("PostTissueMeans,B_",j))
-text(post.means[j,],labels=names)
 }
 ```
+
+In order to compute the factors, we perform the following analysis.
+
+1) We perfrom the factor decomposition and use the first $K$ = 10 matrix approximations to estimate the covariance of X^{t}X. HOwever, rather than add them as we did in PCs, we compute the weights for each componenet separately so that we can quantify the weight on the each 'Factor Approximation' of the covariance. Recall that the loading corresponding to factor 1 corresponds to how much of 'master tissue pattern1' each tissue carries, and so the entry for that tissue in the $kth$ covariance matrix approximation will tell you the size of the effect in the direction of this 'master tissue-k specific pattern'. Similarly, the off-diagonal elements tell us the covariance between the performnace of tissues $i$ and $j$ in this direction. See my document section entitled 'Interpretation.' I also use the full rank $K=10$ approximation.
+
+```{r, eval=FALSE}
+sfa -gen ./centered.t.stats.txt -t -g 43 -n 6904 -o tri -k 10
+```
+Then, I will use $K=10$ factor representations of the covariance matrix of $X^{t}X$.
+```{r using Factors}
+library("mvtnorm")
+lambda=as.matrix(read.table("tri_lambda.out"))
+factor=as.matrix(read.table("tri_F.out"))
+
+get.prior.covar.Ukl=function(P,L,R,F=10){
+  test=list()
+  for(l in 1:L){
+  test[[l]]=list()
+    omega=omega.table[l,]
+    test[[l]][[1]]=omega*diag(1,R)# the first covariance matrix will be the 'sopped up' identity
+    test[[l]][[2]]=omega*(t(X.c)%*%X.c)/M
+
+     
+  svd.X=svd(X.c)##perform SVD on sample centered
+  #svd.X=svd(X.t)##peform SCD on unsample centered (same result for v)
+  v=svd.X$v;u=svd.X$u;d=svd.X$d
+  
+  cov.pc=1/M*v[,1:P]%*%diag(d[1:P])%*%t(v[,1:P])##Use the rank P summary representation  
+  
+  test[[l]][[3]]=omega*cov.pc
+  for(f in 1:F){
+    load=as.matrix(lambda[,f])
+    fact=t(as.matrix(factor[f,]))
+    test[[l]][[f+3]]=1/M*(load%*%fact)%*%t((load%*%fact))
+    }
+  test[[l]][[F+4]]=1/M*(lambda%*%factor)%*%t((lambda%*%factor))}
+  
+return(U.0kl=test)}
+
+U.0kl=get.prior.covar.Ukl(P=13,L=3,R=43,F=10)
+K=length(U.0kl[[1]])
+##Now, compute the additional likielihoods
+global.lik=matrix(unlist(likelihood(b.gp.hat,se.gp.hat)),ncol=K*L,byrow=TRUE)
+pis2=mixEM(matrix_lik=global.lik,prior=rep(1,K*L))
+names.vec=matrix(NA,nrow=K,ncol=L)
+  for(l in 1:L){ 
+    for(k in 1:K){
+      names.vec[k,l]=paste0("k=",k,";l=",l)}}
+
+#write.table((cbind(as.vector(names.vec),pis$pihat)),quote=FALSE,file="piklhat.txt")
+#pi.hat=read.table(file="piklhat.txt")
+barplot(pis2$pihat,main="mixEM estimated pi",names=names.vec,las=2)
+
+
+x=updated.weights(b.gp.hat,se.gp.hat,global.lik)
+barplot(as.vector(x),main="naiiveWeights estimated pi",names=names.vec,las=2)
+```
+
+
+

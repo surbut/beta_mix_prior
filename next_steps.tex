@@ -333,7 +333,32 @@ We can then update our estimate of $\pi_{k,l}$ as
 
 Which amounts to iteratively updating the weights such that they maximize the likelihood of the data across all gene snp pairs, assuming all vectors $\beta_{j}$ arise from some shared mixture distribution and thus inform our estimates of each $\beta_{j}$. We can begin with $U_{0}$ = I, $U_{1} = \hat{\Sigma}$ where $\hat{\Sigma}$ represents the estimated RxR covariance matrix of T statistics, and $U_{2}$ is $U_{k{i,j}}$ as $F_{i} \dot F_{j}^{t}$, which, if we assume the $F_{k}$ are broadly capturing direction of effect across genes in tissue 1..R and there are at most k=R factors, then each element {i,j} of $U_{k}$ is the factor corresponding to the covariance between tissue $i$ and tissue $2$ in the case of the approximated covariance matrix. 
 
+\Interpretation
+
 In order to determine the hierarchical weight that separates the relative importance of one tissue expression pattern, we will separate each of the U_{k} rather than using the sum of the first K (as you suggested in the $VV'{t}$ example). In the F ~ I case, each $U_{k}$ (approximated covariance matrix) will then be derived from the loadings on tissue-specific K expression profile for each tissue. Each element of $U_{k}$ will then represent the covariance of tissue $r_{i}$ and $r_{j}$ based on their loadings on this expression profile.
+
+Let's suppose that the loading on 'eigentissue 1' were $[0 1 1 0 1]$ for 4 tissues. Then the covariance matrix would be approximated by (assuming F ~ I_{p})
+
+\begin{verbatim}
+
+1    0    0    1    1
+0    0    0    0    0
+0    0    0    0    0
+1    0    0    1    1
+1    0    0    1    1
+\end{verbatim}
+
+After scaling by $\omega = 0.5$, we might get the following:
+
+\begin{verbatim}
+ [1,]	0.5    0    0  0.5  0.5
+[2,]  0.0    0    0  0.0  0.0
+[3,]  0.0    0    0  0.0  0.0
+[4,]  0.5    0    0  0.5  0.5
+[5,]  0.5    0    0  0.5  0.5
+\end{verbatim}
+
+Which means that the absolute variance of tissue 1 in characteristic direction $k$ is 0.5. Similarly, tissue 4 also has variance in direction $K=1$ of 0.5. Their covariance (in this fixed effect case) is also 0.5. However, Tissues 2 and 3 do not have any behavior in this characteristic pattern.
 
 
 \end{document}

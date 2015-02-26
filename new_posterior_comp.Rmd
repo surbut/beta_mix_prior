@@ -236,8 +236,10 @@ Now that we have the hierarchical weights $\pi_{k,l}$, we can compute the poster
 For a given prior covariance matrix, compute posterior covariance and posterior mean. Here, let U.0k.l represent a specific matrix in U.0kl (.e.g, $U.0kl[[l]][[k]]$)
 
 ```{r}
-
 ##' @param U.0k.l let U.0k.l represent a specific matrix in U.0kl (.e.g, U.0kl[[l]][[k]])
+##' @return post.b.gpkl.cov ## returns an R*R posterior covariance matrix for jth gene snp pair
+##' @return post.b.gpkl.mean return a 1 * R vector of posterior means for a given prior covariance matrix
+
 post.b.gpkl.cov <- function(V.gp.hat.inv, U.0k.l){
         U.gp1kl <- U.0k.l %*% solve(V.gp.hat.inv %*% U.0k.l + diag(nrow(U.0k.l)))
             return(U.gp1kl)
@@ -275,8 +277,9 @@ Now, for each gene-snp pair $j$ and each prior covariance matrix $U_{0kl}$ I wil
 
 ```{r postmeanandcovars, cache=TRUE}
 ##' @param U.0kl = l dimensional list of k dimensional list of prior covariance matrices
-##' @returm all, a J dimensional list of k dimensional lists of L dimensional list of posterior mean and covariance matrices.
-##' @returm post.weight.matrix a J x (K*L) matrix of posterior weights coresponding to p(J,L|D) for each gene-snp Pair
+##' @returm all.means, a J dimensional list of k dimensional lists of L dimensional list of 1xR vectors of posterior means
+##' @returm all.covs, a J dimensional list of k dimensional lists of L dimensional list of RxR posterior covariances
+##' @returm post.weight.matrix a J x (K*L) matrix of posterior weights coresponding to p(K,L|D) for each gene-snp Pair
 
 
 all.covs=list()

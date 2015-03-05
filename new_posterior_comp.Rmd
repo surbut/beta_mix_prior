@@ -47,10 +47,10 @@ get.prior.covar.Ukl=function(P,L,R){
 
      
   svd.X=svd(X.c)##perform SVD on sample centered
-  #svd.X=svd(X.t)##peform SCD on unsample centered (same result for v)
+  #svd.X=svd(X.t)##peform SVD on unsample centered (same result for v)
   v=svd.X$v;u=svd.X$u;d=svd.X$d
   
-  cov.pc=1/M*v[,1:P]%*%diag(d[1:P])%*%t(v[,1:P])##Use the rank P summary representation  
+  cov.pc=1/M*v[,1:P]%*%diag(d[1:P])%*%t(u[,1:P])%*%t(v[,1:P]%*%diag(d[1:P])%*%t(u[,1:P]))##Use the rank P summary representation  
   
   test[[l]][[3]]=omega*cov.pc}
 return(U.0kl=test)}
@@ -350,13 +350,17 @@ post.weight.mat[is.na(post.weight.mat)] <- 0
 temp=NULL
 for(k in 1:K){
 for(l in 1:L){
-temp=rbind(as.vector(post.weight.mat[k,l]*mean.list[[k]][[l]]),temp)##creates a 6x43 matrix of posterior means, but inverted (which is ok because we simply sum)
+temp=rbind(as.vector(post.weight.mat[k,l]*mean.list[[k]][[l]]),temp)##creates a 6x43 matrix of posterior means, but in [k=3,l=2][k=3,l=1][k=2,l=2][k=2,l=1] etc. (which is ok because we simply sum)
 }
 }
 post.means[j,]=t(colSums(temp))
 #pdf(paste0("PostTissueMeans,B_",j))
-barplot(post.means[j,],main=paste0("PostTissueMeans,B_",j),col=c(1:43))
-text(post.means[j,],labels=names, srt=45, pos=1,col=c(1:43))
+par(mfrow=c(1,2))
+barplot(post.means[j,],main=paste0("PostTissueMeans,B_",j),col=c(1:43),las=2,names=names[-44])
+#text(post.means[j,],labels=names, srt=45, pos=1,col=c(1:43))
+b.mle=t(b.gp.hat[j,])
+plot(b.mle,post.means[j,],main="PostMeanvsMLE")
+abline(0,1)##concern because the order of magnitude diff, but prior weight heavy on (U.0kl[[2]][[3]]) which has very small avg. variance
 #dev.off()
 
 }
@@ -388,7 +392,10 @@ get.prior.covar.Ukl=function(P,L,R,F=10){
   #svd.X=svd(X.t)##peform SCD on unsample centered (same result for v)
   v=svd.X$v;u=svd.X$u;d=svd.X$d
   
-  cov.pc=1/M*v[,1:P]%*%diag(d[1:P])%*%t(v[,1:P])##Use the rank P summary representation  
+    cov.pc=1/M*v[,1:P]%*%diag(d[1:P])%*%t(u[,1:P])%*%t(v[,1:P]%*%diag(d[1:P])%*%t(u[,1:P]))##Use the rank P summary representation  
+
+
+  #cov.pc=1/M*v[,1:P]%*%diag(d[1:P])%*%t(v[,1:P])##Use the rank P summary representation  
   
   test[[l]][[3]]=omega*cov.pc
   for(f in 1:F){
@@ -412,11 +419,12 @@ names.vec=matrix(NA,nrow=K,ncol=L)
 
 #write.table((cbind(as.vector(names.vec),pis$pihat)),quote=FALSE,file="piklhat.txt")
 #pi.hat=read.table(file="piklhat.txt")
-barplot(pis2$pihat,main="mixEM estimated pi",names=names.vec,las=2)
+par(mfrow=c(2,1))
+barplot(pis2$pihat,main="mixEM estimated pi",names=names.vec,las=2,col=c(1:14))
 
 
 x=updated.weights(b.gp.hat,se.gp.hat,global.lik)
-barplot(as.vector(x),main="naiiveWeights estimated pi",names=names.vec,las=2)
+barplot(as.vector(x),main="naiiveWeights estimated pi",names=names.vec,las=2,col=c(1:14))
 ```
 
 

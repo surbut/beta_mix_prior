@@ -50,7 +50,7 @@ get.prior.covar.Ukl=function(P,L,R){
   #svd.X=svd(X.t)##peform SVD on unsample centered (same result for v)
   v=svd.X$v;u=svd.X$u;d=svd.X$d
   
-  cov.pc=1/M*v[,1:P]%*%diag(d[1:P])%*%t(v[,1:P])##Use the rank P summary representation  
+  cov.pc=1/M*v[,1:P]%*%diag(d[1:P])%*%t(u[,1:P])%*%t(v[,1:P]%*%diag(d[1:P])%*%t(u[,1:P]))##Use the rank P summary representation  
   
   test[[l]][[3]]=omega*cov.pc}
 return(U.0kl=test)}
@@ -69,7 +69,7 @@ library("SQUAREM")
 
 L=2
 R=43
-U.0kl=get.prior.covar.Ukl(P=13,L,R)
+U.0kl=get.prior.covar.Ukl(P=25,L,R)
 K=length(U.0kl[[1]])
 #U.0kl[[L+1]]=diag(1,R) ##Add the identity matrix to the list 
 
@@ -185,7 +185,7 @@ pi.hat=read.table(file="piklhat.txt")
 barplot(pis$pihat,names=as.vector(names.vec),main="mixEM estimated pi")
 ```
 
-We can see that the majority of the weight is put on the covariance matrix of t statistics, $X_{t}'X$ and the estimated covariance matrix, $V_{t,1..K}\lambda V_{t,1..K}'$ where here I use K = 13. Recall each V is a $43$ x $1$ vector. 
+We can see that the majority of the weight is put on the covariance matrix of t statistics, $X_{t}'X$ and the estimated covariance matrix, $V_{t,1..K}\lambda^{2} V_{t,1..K}'$ where here I use K = 13. Recall each V is a $43$ x $1$ vector. 
  
 I compare with naiive iteration, which simply weights the relative likelihood across individuals.
 
@@ -359,7 +359,8 @@ par(mfrow=c(1,2))
 barplot(post.means[j,],main=paste0("PostTissueMeans,B_",j),col=c(1:43),las=2,names=names[-44])
 #text(post.means[j,],labels=names, srt=45, pos=1,col=c(1:43))
 b.mle=t(b.gp.hat[j,])
-plot(b.mle,post.means[j,],main="PostMeanvsMLE")##concern because the order of magnitude diff, but prior weight heavy on (U.0kl[[2]][[3]]) which has very small avg. variance
+plot(b.mle,post.means[j,],main="PostMeanvsMLE")
+abline(0,1)##concern because the order of magnitude diff, but prior weight heavy on (U.0kl[[2]][[3]]) which has very small avg. variance
 #dev.off()
 
 }
@@ -370,7 +371,7 @@ In order to compute the factors, we perform the following analysis.
 1) We perfrom the factor decomposition and use the first $K$ = 10 matrix approximations to estimate the covariance of X^{t}X. HOwever, rather than add them as we did in PCs, we compute the weights for each componenet separately so that we can quantify the weight on the each 'Factor Approximation' of the covariance. Recall that the loading corresponding to factor 1 corresponds to how much of 'master tissue pattern1' each tissue carries, and so the entry for that tissue in the $kth$ covariance matrix approximation will tell you the size of the effect in the direction of this 'master tissue-k specific pattern'. Similarly, the off-diagonal elements tell us the covariance between the performnace of tissues $i$ and $j$ in this direction. See my document section entitled 'Interpretation.' I also use the full rank $K=10$ approximation.
 
 ```{r, eval=FALSE}
-sfa -gen ./centered.t.stats.txt -t -g 43 -n 6904 -o tri -k 10
+sfa -gen ./centered.t.stats.txt -t -g 43 -n 6904 -o tri -k 18
 ```
 Then, I will use $K=10$ factor representations of the covariance matrix of $X^{t}X$.
 ```{r using Factors}
@@ -391,7 +392,10 @@ get.prior.covar.Ukl=function(P,L,R,F=10){
   #svd.X=svd(X.t)##peform SCD on unsample centered (same result for v)
   v=svd.X$v;u=svd.X$u;d=svd.X$d
   
-  cov.pc=1/M*v[,1:P]%*%diag(d[1:P])%*%t(v[,1:P])##Use the rank P summary representation  
+    cov.pc=1/M*v[,1:P]%*%diag(d[1:P])%*%t(u[,1:P])%*%t(v[,1:P]%*%diag(d[1:P])%*%t(u[,1:P]))##Use the rank P summary representation  
+
+
+  #cov.pc=1/M*v[,1:P]%*%diag(d[1:P])%*%t(v[,1:P])##Use the rank P summary representation  
   
   test[[l]][[3]]=omega*cov.pc
   for(f in 1:F){
@@ -399,7 +403,7 @@ get.prior.covar.Ukl=function(P,L,R,F=10){
     fact=t(as.matrix(factor[f,]))
     test[[l]][[f+3]]=1/M*(load%*%fact)%*%t((load%*%fact))
     }
-  test[[l]][[F+4]]=1/M*(lambda%*%factor)%*%t((lambda%*%factor))}
+  test[[l]][[F+4]]=1/M*(lambda%*%factor)%*%t((lambda%*%factor))}##Note that this is NOT equivalent to the original covariance matrix because  the maximum number of cactors is limited to 10
   
 return(U.0kl=test)}
 

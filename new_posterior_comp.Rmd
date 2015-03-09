@@ -18,7 +18,7 @@ se.gp.hat=na.omit(read.table("16008genesnppairs_43tissues_sigma.hat.std.txt",hea
 t.stat=na.omit(read.table("16008genesnppairs_43tissues_t.stat.txt",header=F,skip=1)[,-c(1,2)])
 p.vals=na.omit(read.table("16008genesnppairs_43tissues_pval.txt",header=F,skip=1)[,-c(1,2)])
 
-L = 2
+L = 5
 R=ncol(b.gp.hat)#number of tissues
 X.t=as.matrix(t.stat)
 X.c=apply(X.t,2,function(x) x-mean(x)) ##Column centered matrix of t statistics
@@ -45,7 +45,9 @@ get.prior.covar.Ukl=function(P,L,R){
   test[[l]]=list()
     omega=omega.table[l,]
     test[[l]][[1]]=omega*diag(1,R)# the first covariance matrix will be the 'sopped up' identity
-    test[[l]][[2]]=omega*(t(X.c)%*%X.c)/M
+    S=cov2cor((t(X.c)%*%X.c)/M)
+  
+test[[l]][[2]]=omega*(S)
 
      
   svd.X=svd(X.c)##perform SVD on sample centered
@@ -54,7 +56,7 @@ get.prior.covar.Ukl=function(P,L,R){
   
   cov.pc=1/M*v[,1:P]%*%diag(d[1:P])%*%t(u[,1:P])%*%t(v[,1:P]%*%diag(d[1:P])%*%t(u[,1:P]))##Use the rank P summary representation  
   
-  test[[l]][[3]]=omega*cov.pc}
+  test[[l]][[3]]=omega*cov2cor(cov.pc)}
 return(U.0kl=test)}
 
 ```
@@ -69,10 +71,11 @@ Now that we have the prior covariance matrices, we can maximize the likelihood $
 #install.packages("SQUAREM") note you'll need to have SQUAREM installed
 library("SQUAREM")
 
-L=2
+L=5
 R=43
 U.0kl=get.prior.covar.Ukl(P=25,L,R)
 K=length(U.0kl[[1]])
+L=length(U.0kl)
 #U.0kl[[L+1]]=diag(1,R) ##Add the identity matrix to the list 
 
 ##J = Number of gene-snp pairs to consider
@@ -266,7 +269,7 @@ post.weight.func=function(pis,U.0kl,V.gp.hat,b.mle){
 post.weight.num = matrix(NA,nrow=K,ncol=L)
 for(k in 1:K){
 for(l in 1:L){
-  wts=matrix(pis,nrow=3,ncol=2)
+  wts=matrix(pis,nrow=K,ncol=L)
   pi=wts[k,l]
   post.weight.num[k,l]=pi*dmvnorm(x=b.mle, sigma=U.0kl[[l]][[k]] + V.gp.hat)}
 }
@@ -340,13 +343,14 @@ names=NULL
                                                        }
 ```
 We can compute the overall posterior mean for each gene-SNP pair across tissues (i.e., the weighted $R$ dimensional posterior mean vector of $mu_{j}$). Here, I do it for 10 gene SNP pairs.
-```{r,cache=TRUE}
+```{r}
 J=10
+L=5
 for(j in 1:J){
 post.means=matrix(NA,nrow=J,ncol=R)
 mean.list=all.means[[j]]
 post.weights=post.weight.matrix[j,]
-post.weight.mat=matrix(post.weights,nrow=3,ncol=2)
+post.weight.mat=matrix(post.weights,nrow=K,ncol=L)
 post.weight.mat[is.na(post.weight.mat)] <- 0
 
 temp=NULL
@@ -361,7 +365,12 @@ par(mfrow=c(1,2))
 barplot(post.means[j,],main=paste0("PostTissueMeans,B_",j),col=c(1:43),las=2,names=names[-44])
 #text(post.means[j,],labels=names, srt=45, pos=1,col=c(1:43))
 b.mle=t(b.gp.hat[j,])
-plot(b.mle,post.means[j,],main="PostMeanvsMLE")
+a.m=abs(b.mle)
+a.p=abs(post.means[j,])
+low=min(a.m,a.p)
+high=max(a.m,a.p)
+plot(abs(b.mle),abs(post.means[j,]),main="PostMeanvsMLE",xlim=c(low,high),ylim=c(low,high))
+                                                                   
 abline(0,1)##concern because the order of magnitude diff, but prior weight heavy on (U.0kl[[2]][[3]]) which has very small avg. variance
 #dev.off()
 
@@ -387,30 +396,35 @@ get.prior.covar.Ukl=function(P,L,R,F=18){
   test[[l]]=list()
     omega=omega.table[l,]
     test[[l]][[1]]=omega*diag(1,R)# the first covariance matrix will be the 'sopped up' identity
-    test[[l]][[2]]=omega*(t(X.c)%*%X.c)/M
+    test[[l]][[2]]=omega*cov2cor((t(X.c)%*%X.c)/M)
 
      
   svd.X=svd(X.c)##perform SVD on sample centered
   #svd.X=svd(X.t)##peform SCD on unsample centered (same result for v)
   v=svd.X$v;u=svd.X$u;d=svd.X$d
   
-    cov.pc=1/M*v[,1:P]%*%diag(d[1:P])%*%t(u[,1:P])%*%t(v[,1:P]%*%diag(d[1:P])%*%t(u[,1:P]))##Use the rank P summary representation  
+    cov.pc=1/M*v[,1:P]%*%diag(d[1:P])%*%t(u[,1:P])%*%t(v[,1:P]%*%diag(d[1:P])%*%t(u[,1:P]))##Use the rank P summary representation, also has shrinkage implications 
 
 
   #cov.pc=1/M*v[,1:P]%*%diag(d[1:P])%*%t(v[,1:P])##Use the rank P summary representation  
   
-  test[[l]][[3]]=omega*cov.pc
+  test[[l]][[3]]=omega*cov2cor(cov.pc)
   for(f in 1:F){
     load=as.matrix(lambda[,f])
     fact=t(as.matrix(factor[f,]))
-    test[[l]][[f+3]]=1/M*(load%*%fact)%*%t((load%*%fact))
+    a=cov2cor(1/M*(load%*%fact)%*%t((load%*%fact)))
+    a[is.nan(a)] = 0
+    test[[l]][[f+3]]=omega*a
     }
-  test[[l]][[F+4]]=1/M*(lambda%*%factor)%*%t((lambda%*%factor))}##Note that this is NOT equivalent to the original covariance matrix because  the maximum number of cactors is limited to 10
+  b=cov2cor(1/M*(lambda%*%factor)%*%t((lambda%*%factor)))
+  b[is.nan(b)]=0
+  test[[l]][[F+4]]=omega*b}##Note that this is NOT equivalent to the original covariance matrix because  the maximum number of cactors is limited to 10
   
 return(U.0kl=test)}
 
-U.0kl=get.prior.covar.Ukl(P=25,L=3,R=43,F=18)
+U.0kl=get.prior.covar.Ukl(P=25,L=5,R=43,F=18)
 K=length(U.0kl[[1]])
+L=length(U.0kl)
 ##Now, compute the additional likielihoods
 global.lik=matrix(unlist(likelihood(b.gp.hat,se.gp.hat)),ncol=K*L,byrow=TRUE)
 pis2=mixEM(matrix_lik=global.lik,prior=rep(1,K*L))

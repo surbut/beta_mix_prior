@@ -103,8 +103,12 @@
 \newcommand{\pcu}{\mathbf{U}}
 \newcommand{\pcv}{\mathbf{V}}
 \newcommand{\pcd}{\mathbf{D}}
-\newcommand{\sfa}{\mathbf{\lambda}\mathbf{F}}
-\newcommand{\sfat}{\mathbf{F}^{t}\mathbf{\lambda}^{t}}
+\newcommand{\sfa}{\mathbf{\Lambda}\mathbf{F}}
+\newcommand{\sfat}{(\mathbf{F}\mathbf{\Lambda})^{t}}
+\newcommand{\load}{\mathbf{\Lambda}}
+\newcommand{\factor}{\mathbf{F}}
+
+
 
 
 %% END MACROS SECTION
@@ -180,23 +184,30 @@ Suppose that we form the following matrices to compute the relevant quantities:
 \item $\tmat$ is the corresponding $J \times R$ matrix of $t$ computed for each gene-snp pair statistics across all $R=43$ tissues;
 \item $\tcen$ is the $RxR$ covariance matrix of samples, computed by subtracting the column means for each tissue from $X_{t}$ and computed as $\frac{1}{J} X_{t}^{t} X_{t}$
 \item $\svd$ is the singular value decomposition of $X_{t}$, thus, $U$ is the $JxR$ matrix of eigenvectors of the 'feature covariance matrix' in its columns, $d$ is the $RxR$ diagonal matrix of singular values, and $V^{t}$ is the $RxR$ matrix with the eigenvectors of the tissue covariance matrix in its rows.
-\item $\sfa$ is the sparse factor decomposition of $\tcen^{t}$, thus ${\mathbf{\lambda}}$ is $RxQ$ matrix of factor loadings, where Q is the number of factors chosen and by  ${\mathbf{F}}$ is $QxJ$ matrix of factors, loosely corresponding to the 'eigentissue directions' discussed in the 'next steps pdf'.
+\item $\sfa$ is the sparse factor decomposition of $\tcen^{t}$, thus $\mathbf{\lambda}$ is $JxQ$ matrix of factor loadings, where Q is the number of factors chosen and ${\mathbf{F}}$ is $QxR$ matrix of factors, loosely corresponding to the `eigenconfigurations' discussed in the 'next steps pdf'. Essentially, each factor may be composed of multiple tissues, analogous to the configuration model, in which a tissue can be active in multiple configurations and a Factor can, in turn, contain many active tissues. However, a Sparse Prior on the rows of ${\mathbf{\lambda}}$ means that a SNP is maximally active in one Factor.
 
 \end{itemize}
 
 
 
-For a given $\omega \in [0.075, 0.1]$, we specify 4 `types' of $RxR$ prior covariance matrices $U_{k,l}$.
+For a given $\omega \in [0.075, 0.1]$, we specify 4 `types' of $RxR$ prior correlation matrices $U_{k,l}$.
 \begin{itemize}
 
 \item $U_{k=1,l=1,2}$ = $\omega_l$ $\mathbf{I}_{R}$
 
 \item $U_{k=2,l=1,2}$ = $\omega_l$ $\tcen$ The (naiively) estimated tissue covariance matrix
 
-\item $U_{k=3,l=1,2}$ = $\omega_l$ $\frac{1}{J}$ $\pcv_{1..p}$ $\pcd_{1..p}$  $\pcv^{t}$_{1..p}^$ is the rank $p$ eigenvector approximation of the tissue covariance matrices, i.e., the sum of the first $p$ eigenvector approximations.
-\item $U_{k=4:13,l=1,2}$ = $\frac{1}{J}$ $\sfa_{q}$ ($\sfat)_{q}$ corresponding to the $\qth$ sparse factor representation of the tissue covariance matrix (not the sum of the first $q$, as above)
+\item $U_{k=3,l=1,2}$ = $\omega_l$ $\frac{1}{J}$ $\pcv_{1..p}$ $\pcd^{2}_{1..p}$   $\pcv^{t}_{1..p}$ is the rank $p$ eigenvector approximation of the tissue covariance matrices, i.e., the sum of the first $p$ eigenvector approximations.
 
-\item $U_{k=14,l=1,2}$ = $\frac{1}{J}$ $\sfa$ $\sfat$ is the sparse factor representation of the tissue covariance matrix, estimated using all $q$ factors.
+\subsection{Factor Analysis Matrices}
+
+Let $\load$ represent the $J$ x $Q$ matrix of loadings, such that each SNP is maximally loaded on one $Factor$. Essentially, we have put a sparse prior on the rows of $\load$ such that each SNP can be a member of at most one factor class. The $K$x$R$ matrix of factors $\fact$ then represents the matrix of 'eigenconfigurations' which indicates expression in a particular subset of tissues - each Factor may indicate activity in one, several or no tissues. As a critical difference with PCA, the factors can outnumber the tissues and each tissue can be a member of more than one factor.
+
+\item $U_{k=4:13,l=1,2}$ = $\frac{1}{J}$ $\sfat_{q}$ $\sfa_{q}$ corresponding to the $\qth$ sparse factor representation of the tissue covariance matrix (not the sum of the first $q$, as above)
+ 
+
+
+\item $U_{k=14,l=1,2}$ = $\frac{1}{J}$ $\sfat$ $\sfa$ is the sparse factor representation of the tissue covariance matrix, estimated using all $q$ factors.
 
 \end{itemize}
 

@@ -387,6 +387,7 @@ sfa -gen ./centered.t.stats.txt -g 6904 -n 43 -o tri -k 18 (here, we want each r
 ```
 Then, I will use $K=18$ factor representations of the covariance matrix of $X^{t}X$.
 ```{r using Factors}
+
 library("mvtnorm")
 lambda=as.matrix(read.table("tri_lambda.out"))
 factor=as.matrix(read.table("tri_F.out"))

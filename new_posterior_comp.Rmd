@@ -6,6 +6,7 @@ output: html_document
 In this document, I will compute the posterior distribution for $\beta_{j}$ using the derivation in the document `next Steps', where the prior on $\beta_{j}$ is modeled as a mixture of multivariate normals.
 
 ```{r}
+setwd("~/Dropbox/cyclingstatistician/beta_gp_continuous/")
 tuto.dir=getwd()
 ##' @param b.gp.hat PxR matrix of standardized effect sizes across all `R' tissue types,
 ##' @param se.gp.hat RxR estimated covariance matrix of standardized standard errors, corresponding to the MLE of genotype effect for a given gene-SNP pair in all tissues
@@ -382,7 +383,7 @@ In order to compute the factors, we perform the following analysis.
 1) We perfrom the factor decomposition and use the first $K$ = 10 matrix approximations to estimate the covariance of X^{t}X. HOwever, rather than add them as we did in PCs, we compute the weights for each componenet separately so that we can quantify the weight on the each 'Factor Approximation' of the covariance. Recall that the loading corresponding to factor 1 corresponds to how much of 'master tissue pattern1' each tissue carries, and so the entry for that tissue in the $kth$ covariance matrix approximation will tell you the size of the effect in the direction of this 'master tissue-k specific pattern'. Similarly, the off-diagonal elements tell us the covariance between the performnace of tissues $i$ and $j$ in this direction. See my document section entitled 'Interpretation.' I also use the full rank $K=10$ approximation.
 
 ```{r, eval=FALSE}
-sfa -gen ./centered.t.stats.txt -t -g 43 -n 6904 -o tri -k 18
+sfa -gen ./centered.t.stats.txt -g 6904 -n 43 -o tri -k 18 (here, we want each row to be maximally loaded on 1 factor, and each factor to correspond to a specific subset of tissues)
 ```
 Then, I will use $K=18$ factor representations of the covariance matrix of $X^{t}X$.
 ```{r using Factors}
@@ -412,17 +413,19 @@ get.prior.covar.Ukl=function(P,L,R,F=18){
   for(f in 1:F){
     load=as.matrix(lambda[,f])
     fact=t(as.matrix(factor[f,]))
-    a=cov2cor(1/M*(load%*%fact)%*%t((load%*%fact)))
+    rank.prox=load%*%fact
+    a=cov2cor(1/M*(t(rank.prox)%*% rank.prox))
     a[is.nan(a)] = 0
     test[[l]][[f+3]]=omega*a
     }
-  b=cov2cor(1/M*(lambda%*%factor)%*%t((lambda%*%factor)))
+     full.rank=lambda%*%factor
+  b=cov2cor(1/M*(t(full.rank)%*%full.rank))
   b[is.nan(b)]=0
   test[[l]][[F+4]]=omega*b}##Note that this is NOT equivalent to the original covariance matrix because  the maximum number of cactors is limited to 10
   
 return(U.0kl=test)}
 
-U.0kl=get.prior.covar.Ukl(P=25,L=5,R=43,F=18)
+U.0kl=get.prior.covar.Ukl(P=25,L=2,R=43,F=18)
 K=length(U.0kl[[1]])
 L=length(U.0kl)
 ##Now, compute the additional likielihoods

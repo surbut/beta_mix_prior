@@ -14,10 +14,17 @@ tuto.dir=getwd()
 ##' @param U.0kl RxR prior covariance matrix for posterior.covariance matrix K and weight l
 ##' @param pi LxK matrix of prior weights estimated from the EM algorithm which correspond to optimal weighting of prior covariance matrix
 
-b.gp.hat=na.omit(read.table("16008genesnppairs_43tissues_beta.hat.std.txt",header=F,skip=1)[,-c(1,2)])
-se.gp.hat=na.omit(read.table("16008genesnppairs_43tissues_sigma.hat.std.txt",header=F,skip=1)[,-c(1,2)])
-t.stat=na.omit(read.table("16008genesnppairs_43tissues_t.stat.txt",header=F,skip=1)[,-c(1,2)])
-p.vals=na.omit(read.table("16008genesnppairs_43tissues_pval.txt",header=F,skip=1)[,-c(1,2)])
+#b.gp.hat=na.omit(read.table("16008genesnppairs_43tissues_beta.hat.std.txt",header=F,skip=1)[,-c(1,2)])
+b.gp.hat=na.omit(read.table("50186simulatedbeta.hat.std.txt",header=F,skip=1)[,-c(1,2)])
+
+#se.gp.hat=na.omit(read.table("16008genesnppairs_43tissues_sigma.hat.std.txt",header=F,skip=1)[,-c(1,2)])
+se.gp.hat=na.omit(read.table("50186simulatedse.hat.std.txt",header=F,skip=1)[,-c(1,2)])
+
+#t.stat=na.omit(read.table("16008genesnppairs_43tissues_t.stat.txt",header=F,skip=1)[,-c(1,2)])
+t.stat=na.omit(read.table("50186simulatedt.hat.std.txt",header=F,skip=1)[,-c(1,2)])
+
+
+#p.vals=na.omit(read.table("16008genesnppairs_43tissues_pval.txt",header=F,skip=1)[,-c(1,2)])
 
 L = 5
 R=ncol(b.gp.hat)#number of tissues
@@ -73,8 +80,8 @@ Now that we have the prior covariance matrices, we can maximize the likelihood $
 library("SQUAREM")
 
 L=5
-R=43
-U.0kl=get.prior.covar.Ukl(P=25,L,R)
+R=5
+U.0kl=get.prior.covar.Ukl(P=5,L,R)
 K=length(U.0kl[[1]])
 L=length(U.0kl)
 #U.0kl[[L+1]]=diag(1,R) ##Add the identity matrix to the list 
@@ -290,6 +297,9 @@ Now, for each gene-snp pair $j$ and each prior covariance matrix $U_{0kl}$ I wil
 
 all.covs=list()
 all.means=list()
+   all.up=list()
+      all.low=list()
+     all.null=list()
 J=dim(b.gp.hat)[1]
 #lapply(seq(1:J),function(j){
   for(j in 1:J){
@@ -297,21 +307,40 @@ J=dim(b.gp.hat)[1]
     V.gp.hat=diag(se.gp.hat[j,])^2
     all.covs[[j]]=list()
     all.means[[j]]=list()
-    temp.mean=matrix(NA,nrow=)
-
+     all.up[[j]]=list()
+      all.low[[j]]=list()
+     all.null[[j]]=list()
+    #temp.mean=matrix(NA,nrow=)
+            
             V.gp.hat.inv <- solve(V.gp.hat)
           for(k in 1:K){
             all.covs[[j]][[k]]=list()
             all.means[[j]][[k]]=list()
+            all.up[[j]][[k]]=list()
+            all.low[[j]][[k]]=list()
+            all.null[[j]][[k]]=list()
+      
             for (l in 1:L){
                   all.means[[j]][[k]][[l]]=list()
-                    all.covs[[j]][[k]][[l]]=list()
+                  all.covs[[j]][[k]][[l]]=list()
                   U.gp1kl <- post.b.gpkl.cov(V.gp.hat.inv, U.0kl[[l]][[k]]) ## returns an R*R posterior covariance matrix for jth gene snp pair
                   mu.gp1kl <- post.b.gpkl.mean(b.mle, V.gp.hat.inv, U.gp1kl) ##return a 1 * R vector of posterior means for a given prior covariance matrix
                   all.means[[j]][[k]][[l]]=mu.gp1kl
                   all.covs[[j]][[k]][[l]]=U.gp1kl
-                      }
-           }}
+                  all.sds=sqrt(diag(U.gp1kl))
+                  for(r in 1:R){
+                    if(all.sds[r]==0){
+                      all.up[[j]][[k]][[l]]=0
+                  all.low[[j]][[k]][[l]]=0
+                   all.null[[j]][[k]][[l]]=1}
+                      else{
+                   all.up[[j]][[k]][[l]]=pnorm(rep(0,R),mean=mu.gp1kl,sd=sqrt(diag(U.gp1kl)),lower.tail=F)
+                  all.low[[j]][[k]][[l]]=pnorm(rep(0,R),mean=mu.gp1kl,sd=sqrt(diag(U.gp1kl)),lower.tail=T)
+                   all.null[[j]][[k]][[l]]=0}
+                  
+                  }
+           }
+    }}
 
 ```
 
@@ -336,43 +365,92 @@ for(j in 1:J){
 
 ```{r,echo=FALSE,eval=TRUE,cache=TRUE}
 
-files=list.files(path="/Users/sarahurbut/Dropbox/cyclingstatistician/filtered/",pattern="_filter.txt")
+#files=list.files(path="/Users/sarahurbut/Dropbox/cyclingstatistician/filtered/",pattern="_filter.txt")
+files=NULL
+for(i in 1:R){files[i]=paste0("out_eqtlbma_sumstats_tissue",i,".txt.gz")}
+# names=NULL
+#       for(i in 1:length(files)){
+#             a=strsplit(files[i], '[.]')[[1]][1]
+#                                  names[i]=(strsplit(a, '[_]')[[1]][1])
+#                                                        }
+
 names=NULL
-      for(i in 1:length(files)){
-            a=strsplit(files[i], '[.]')[[1]][1]
-                                 names[i]=(strsplit(a, '[_]')[[1]][1])
-                                                       }
+for(i in 1:length(files)){
+a=strsplit(files[i], '[_]')[[1]][4]
+names[i]=(strsplit(a, '[.]')[[1]][1])
+}
+
+truth=read.table("50186truth.txt")
+
+
+
 ```
 We can compute the overall posterior mean for each gene-SNP pair across tissues (i.e., the weighted $R$ dimensional posterior mean vector of $mu_{j}$). Here, I do it for 10 gene SNP pairs.
-```{r}
-J=10
+```{r, cache=TRUE}
+#par(mfrow=c(3,3))
+
 L=5
-for(j in 1:J){
+false=which(truth$config==0)
+real=which(truth$config!=0)
+snps=c(false[1:10],real[1:10])
+J=length(snps)
+for(x in 1:length(snps)){
+
+j=snps[x]  
 post.means=matrix(NA,nrow=J,ncol=R)
+post.ups=matrix(NA,nrow=J,ncol=R)
+post.lows=matrix(NA,nrow=J,ncol=R)
+post.null=matrix(NA,nrow=J,ncol=R)
+
+
 mean.list=all.means[[j]]
+upper.list=all.up[[j]]
+lower.list=all.low[[j]]
+null.list=all.null[[j]]
+
 post.weights=post.weight.matrix[j,]
 post.weight.mat=matrix(post.weights,nrow=K,ncol=L)
 post.weight.mat[is.na(post.weight.mat)] <- 0
-
+truth[j,]
 temp=NULL
+temp.up=NULL
+temp.low=NULL
+temp.null=NULL
+
+
 for(k in 1:K){
 for(l in 1:L){
 temp=rbind(as.vector(post.weight.mat[k,l]*mean.list[[k]][[l]]),temp)##creates a 6x43 matrix of posterior means, but in [k=3,l=2][k=3,l=1][k=2,l=2][k=2,l=1] etc. (which is ok because we simply sum)
+
+temp.up=rbind(as.vector(post.weight.mat[k,l]*upper.list[[k]][[l]]),temp.up)
+temp.low=rbind(as.vector(post.weight.mat[k,l]*lower.list[[k]][[l]]),temp.low)
+temp.null=rbind(as.vector(post.weight.mat[k,l]*null.list[[k]][[l]]),temp.null)
+
 }
 }
-post.means[j,]=t(colSums(temp))
+post.means[x,]=t(colSums(temp))
+post.ups[x,]=t(colSums(temp.up))
+post.lows[x,]=t(colSums(temp.low))
+lfsr=apply(rbind(post.ups[x,],post.lows[x,]),2,function(x){1-max(x)})
 #pdf(paste0("PostTissueMeans,B_",j))
-par(mfrow=c(1,2))
-barplot(post.means[j,],main=paste0("PostTissueMeans,B_",j),col=c(1:43),las=2,names=names[-44])
+par(mfrow=c(1,3))
+#barplot(post.means[j,],main=paste0("PostTissueMeans,B_",j),col=c(1:43),las=2,names=names[-44])
+b=barplot(abs(post.means[x,]),main=paste0("PostTissueMeans,B_",j),col=c(1:R),las=2,names=names,beside=TRUE,ylim=c(0,max(abs(post.means[x,]))+0.05))
+text(b, abs(post.means[x,]), labels=round(lfsr,2), pos=3, offset=.5)
+legend("topright",legend=round(lfsr,2),col=c(1:R),pch=1,title="lfsr")
+#text(barplot(post.means[x,]),1,labels=round(lfsr,2))
 #text(post.means[j,],labels=names, srt=45, pos=1,col=c(1:43))
 b.mle=t(b.gp.hat[j,])
 a.m=abs(b.mle)
-a.p=abs(post.means[j,])
-low=min(a.m,a.p)
-high=max(a.m,a.p)
-plot(abs(b.mle),abs(post.means[j,]),main="PostMeanvsMLE",xlim=c(low,high),ylim=c(low,high))
+a.p=abs(post.means[x,])
+low=min(a.m-0.01,a.p-0.01)
+high=max(a.m+0.01,a.p+0.01)
+plot(abs(b.mle),abs(post.means[x,]),main="PostMeanvsMLE",xlim=c(low,high),ylim=c(low,high),col=c(1:R))
+
+true.m=as.numeric(truth[j,c(4:8)])
+plot(abs(true.m),abs(post.means[x,]),col=c(1:R),main="PostMeanvsTrueBeta")
                                                                    
-abline(0,1)##concern because the order of magnitude diff, but prior weight heavy on (U.0kl[[2]][[3]]) which has very small avg. variance
+#abline(0,1)##concern because the order of magnitude diff, but prior weight heavy on (U.0kl[[2]][[3]]) which has very small avg. variance
 #dev.off()
 
 }
@@ -380,71 +458,75 @@ abline(0,1)##concern because the order of magnitude diff, but prior weight heavy
 
 In order to compute the factors, we perform the following analysis.
 
-1) We perfrom the factor decomposition and use the first $K$ = 10 matrix approximations to estimate the covariance of X^{t}X. HOwever, rather than add them as we did in PCs, we compute the weights for each componenet separately so that we can quantify the weight on the each 'Factor Approximation' of the covariance. Recall that the loading corresponding to factor 1 corresponds to how much of 'master tissue pattern1' each tissue carries, and so the entry for that tissue in the $kth$ covariance matrix approximation will tell you the size of the effect in the direction of this 'master tissue-k specific pattern'. Similarly, the off-diagonal elements tell us the covariance between the performnace of tissues $i$ and $j$ in this direction. See my document section entitled 'Interpretation.' I also use the full rank $K=10$ approximation.
+1) We perform the factor decomposition and use the first $K$ = 10 matrix approximations to estimate the covariance of X^{t}X. HOwever, rather than add them as we did in PCs, we compute the weights for each componenet separately so that we can quantify the weight on the each 'Factor Approximation' of the covariance. Recall that the loading corresponding to factor 1 corresponds to how much of 'master tissue pattern1' each tissue carries, and so the entry for that tissue in the $kth$ covariance matrix approximation will tell you the size of the effect in the direction of this 'master tissue-k specific pattern'. Similarly, the off-diagonal elements tell us the covariance between the performnace of tissues $i$ and $j$ in this direction. See my document section entitled 'Interpretation.' I also use the full rank $K=10$ approximation.
 
 ```{r, eval=FALSE}
 sfa -gen ./centered.t.stats.txt -g 6904 -n 43 -o tri -k 18 (here, we want each row to be maximally loaded on 1 factor, and each factor to correspond to a specific subset of tissues)
+sfa -gen ./50186centered.t.stats.txt -g 50186 -n 5 -o tritut -k 20 (here, we want each row to be maximally loaded on 1 factor, and each factor to correspond to a specific subset of tissues)
+
+
 ```
 Then, I will use $K=18$ factor representations of the covariance matrix of $X^{t}X$.
 ```{r using Factors}
 
-library("mvtnorm")
-lambda=as.matrix(read.table("tri_lambda.out"))
-factor=as.matrix(read.table("tri_F.out"))
-P=25
-get.prior.covar.Ukl=function(P,L,R,F=18){
-  test=list()
-  for(l in 1:L){
-  test[[l]]=list()
-    omega=omega.table[l,]
-    test[[l]][[1]]=omega*diag(1,R)# the first covariance matrix will be the 'sopped up' identity
-    test[[l]][[2]]=omega*cov2cor((t(X.c)%*%X.c)/M)
-
-     
-  svd.X=svd(X.c)##perform SVD on sample centered
-  #svd.X=svd(X.t)##peform SCD on unsample centered (same result for v)
-  v=svd.X$v;u=svd.X$u;d=svd.X$d
-  
-    cov.pc=1/M*v[,1:P]%*%diag(d[1:P])%*%t(u[,1:P])%*%t(v[,1:P]%*%diag(d[1:P])%*%t(u[,1:P]))##Use the rank P summary representation, also has shrinkage implications 
-
-
-  #cov.pc=1/M*v[,1:P]%*%diag(d[1:P])%*%t(v[,1:P])##Use the rank P summary representation  
-  
-  test[[l]][[3]]=omega*cov2cor(cov.pc)
-  for(f in 1:F){
-    load=as.matrix(lambda[,f])
-    fact=t(as.matrix(factor[f,]))
-    rank.prox=load%*%fact
-    a=cov2cor(1/M*(t(rank.prox)%*% rank.prox))
-    a[is.nan(a)] = 0
-    test[[l]][[f+3]]=omega*a
-    }
-     full.rank=lambda%*%factor
-  b=cov2cor(1/M*(t(full.rank)%*%full.rank))
-  b[is.nan(b)]=0
-  test[[l]][[F+4]]=omega*b}##Note that this is NOT equivalent to the original covariance matrix because  the maximum number of cactors is limited to 10
-  
-return(U.0kl=test)}
-
-U.0kl=get.prior.covar.Ukl(P=25,L=2,R=43,F=18)
-K=length(U.0kl[[1]])
-L=length(U.0kl)
-##Now, compute the additional likielihoods
-global.lik=matrix(unlist(likelihood(b.gp.hat,se.gp.hat)),ncol=K*L,byrow=TRUE)
-pis2=mixEM(matrix_lik=global.lik,prior=rep(1,K*L))
-names.vec=matrix(NA,nrow=K,ncol=L)
-  for(l in 1:L){ 
-    for(k in 1:K){
-      names.vec[k,l]=paste0("k=",k,";l=",l)}}
-
-#write.table((cbind(as.vector(names.vec),pis$pihat)),quote=FALSE,file="piklhat.txt")
-#pi.hat=read.table(file="piklhat.txt")
-par(mfrow=c(2,1))
-barplot(pis2$pihat,main="mixEM estimated pi",names=names.vec,las=2,col=c(1:14))
-
-
-x=updated.weights(b.gp.hat,se.gp.hat,global.lik)
-barplot(as.vector(x),main="naiiveWeights estimated pi",names=names.vec,las=2,col=c(1:14))
+# library("mvtnorm")
+# lambda=as.matrix(read.table("tri_lambda.out"))
+# factor=as.matrix(read.table("tri_F.out"))
+# #P=25
+# P=5
+# get.prior.covar.Ukl=function(P,L,R,F=18){
+#   test=list()
+#   for(l in 1:L){
+#   test[[l]]=list()
+#     omega=omega.table[l,]
+#     test[[l]][[1]]=omega*diag(1,R)# the first covariance matrix will be the 'sopped up' identity
+#     test[[l]][[2]]=omega*cov2cor((t(X.c)%*%X.c)/M)
+# 
+#      
+#   svd.X=svd(X.c)##perform SVD on sample centered
+#   #svd.X=svd(X.t)##peform SCD on unsample centered (same result for v)
+#   v=svd.X$v;u=svd.X$u;d=svd.X$d
+#   
+#     cov.pc=1/M*v[,1:P]%*%diag(d[1:P])%*%t(u[,1:P])%*%t(v[,1:P]%*%diag(d[1:P])%*%t(u[,1:P]))##Use the rank P summary representation, also has shrinkage implications 
+# 
+# 
+#   #cov.pc=1/M*v[,1:P]%*%diag(d[1:P])%*%t(v[,1:P])##Use the rank P summary representation  
+#   
+#   test[[l]][[3]]=omega*cov2cor(cov.pc)
+#   for(f in 1:F){
+#     load=as.matrix(lambda[,f])
+#     fact=t(as.matrix(factor[f,]))
+#     rank.prox=load%*%fact
+#     a=cov2cor(1/M*(t(rank.prox)%*% rank.prox))
+#     a[is.nan(a)] = 0
+#     test[[l]][[f+3]]=omega*a
+#     }
+#      full.rank=lambda%*%factor
+#   b=cov2cor(1/M*(t(full.rank)%*%full.rank))
+#   b[is.nan(b)]=0
+#   test[[l]][[F+4]]=omega*b}##Note that this is NOT equivalent to the original covariance matrix because  the maximum number of cactors is limited to 10
+#   
+# return(U.0kl=test)}
+# 
+# U.0kl=get.prior.covar.Ukl(P=25,L=2,R=43,F=18)
+# K=length(U.0kl[[1]])
+# L=length(U.0kl)
+# ##Now, compute the additional likielihoods
+# global.lik=matrix(unlist(likelihood(b.gp.hat,se.gp.hat)),ncol=K*L,byrow=TRUE)
+# pis2=mixEM(matrix_lik=global.lik,prior=rep(1,K*L))
+# names.vec=matrix(NA,nrow=K,ncol=L)
+#   for(l in 1:L){ 
+#     for(k in 1:K){
+#       names.vec[k,l]=paste0("k=",k,";l=",l)}}
+# 
+# #write.table((cbind(as.vector(names.vec),pis$pihat)),quote=FALSE,file="piklhat.txt")
+# #pi.hat=read.table(file="piklhat.txt")
+# par(mfrow=c(2,1))
+# barplot(pis2$pihat,main="mixEM estimated pi",names=names.vec,las=2,col=c(1:14))
+# 
+# 
+# x=updated.weights(b.gp.hat,se.gp.hat,global.lik)
+# barplot(as.vector(x),main="naiiveWeights estimated pi",names=names.vec,las=2,col=c(1:14))
 ```
 
 

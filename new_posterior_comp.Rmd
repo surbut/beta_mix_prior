@@ -105,12 +105,13 @@ for (k in 1:K){
 
 
 })}
+```
 
+Here, we load in a precomputed global likelihood as this takes time.
+```{r,eval=FALSE,echo=TRUE}
 ##Likelihood of each component in cols, gene=snp pairs in rows##
 global.lik=matrix(unlist(likelihood(b.gp.hat,se.gp.hat)),ncol=K*L,byrow=TRUE)
-
-
-
+#write.table(global.lik,"global.likNOSFA.txt")
 ```
 Now, to use the EM algorithm:
 
@@ -187,6 +188,7 @@ gradient = function(matrix_lik){
 ```{r}
 #install.packages("SQUAREM")
 library("SQUAREM")
+global.lik=as.matrix(read.table("global.likNOSFA.txt"))
 pis=mixEM(matrix_lik=global.lik,prior=rep(1,K*L))
 names.vec=matrix(NA,nrow=K,ncol=L)
   for(l in 1:L){ 
@@ -203,7 +205,7 @@ We can see that the majority of the weight is put on the covariance matrix of t 
 I compare with naiive iteration, which simply weights the relative likelihood across individuals.
 
 ```{r,cache=TRUE}
-##' @param global.lik Computes the likelihood matrices for each componenet for each of j gene snp pairs
+##' @param global.lik Computes the likelihood matrices for each component for each of j gene snp pairs
 ##' @return global.sum Sums the likelihood for each component across j gene snp pairs
 ##' @return global.norm Sums the likelihood for all components across all j pairs
 
@@ -269,7 +271,7 @@ We also need to compute the "posterior weights" corresponding to each prior cova
 $p(k=1,l=1|D)=$
 $\frac{p(D|k=1,l=1)*p(k=1,l=1)}{p(D)}$
 
-```{r}
+```{r,cache=TRUE}
 ##' @param pi.hat = matrix of prior weights
 ##' @return a vector of posterior weights
 pis=pi.hat[,2]
@@ -288,7 +290,7 @@ return(as.vector(post.weight))}
 
 Now, for each gene-snp pair $j$ and each prior covariance matrix $U_{0kl}$ I will generate a 43 x 43 posterior covariance matrix and 43 x 1 vector of posterior means.
 
-```{r postmeanandcovars, cache=TRUE}
+```{r postmeanandcovars, cache=TRUE,eval=FALSE}
 ##' @param U.0kl = l dimensional list of k dimensional list of prior covariance matrices
 ##' @returm all.means, a J dimensional list of k dimensional lists of L dimensional list of 1xR vectors of posterior means
 ##' @returm all.covs, a J dimensional list of k dimensional lists of L dimensional list of RxR posterior covariances
@@ -303,7 +305,7 @@ all.means=list()
 J=dim(b.gp.hat)[1]
 #lapply(seq(1:J),function(j){
   for(j in 1:J){
-    b.mle=as.vector(t(b.gp.hat[j,]))##turn i into a 43 x 1 vector
+    b.mle=as.vector(t(b.gp.hat[j,]))##turn i into a R x 1 vector
     V.gp.hat=diag(se.gp.hat[j,])^2
     all.covs[[j]]=list()
     all.means[[j]]=list()
@@ -353,7 +355,7 @@ J=dim(b.gp.hat)[1]
 
 Now, for each of the $J$ gene-snp pairs we generate a matrix of posterior weight matrix. Remember, this will not be tissue specific information, so we need to do it only once and can store in an Jx(K*L) matrix
 
-```{r postweightmatrix,cache=TRUE}
+```{r postweightmatrix,cache=TRUE,eval=FALSE}
 library("mvtnorm")
 post.weight.matrix=matrix(NA,nrow=J,ncol=L*K)
 J=dim(b.gp.hat)[1]
@@ -367,6 +369,7 @@ for(j in 1:J){
     post.weight.matrix[j,]=as.vector(post.weight.func(pis,U.0kl,V.gp.hat,b.mle))
 }
 
+write.table(post.weight.matrix,"postweightmatrixnoSFA.txt")
 ```
 
 
@@ -393,7 +396,7 @@ truth=read.table("50186truth.txt")
 
 ```
 We can compute the overall posterior mean for each gene-SNP pair across tissues (i.e., the weighted $R$ dimensional posterior mean vector of $mu_{j}$). Here, I do it for 10 gene SNP pairs.
-```{r, cache=TRUE}
+```{r, cache=TRUE,echo=TRUE,eval=FALSE}
 #par(mfrow=c(3,3))
 
 L=5
@@ -401,11 +404,8 @@ ls.mat=read.table("lfsr.50186.txt")
 apply(ls.mat,2,which.min)
 apply(ls.mat,2,which.max)
 
-false=which(truth$config==0)
-real=which(truth$config!=0)
-snps=c(false[1:9],18530,real[1:8],5166,548)
-J=length(snps)
 
+post.weight.matrix=as.matrix(read.table("postweightmatrixnoSFA.txt"))
   
 post.means=matrix(NA,nrow=J,ncol=R)
 post.ups=matrix(NA,nrow=J,ncol=R)
@@ -413,12 +413,12 @@ post.lows=matrix(NA,nrow=J,ncol=R)
 post.null=matrix(NA,nrow=J,ncol=R)
 lfsr.mat=matrix(NA,nrow=J,ncol=R)
 
-for(x in 1:length(snps)){
-j=snps[x]
+
 #if(plot=FALSE)
-  #{J=nrow(b.gp.hat)
-#for(x in 1:nrow(b.gp.hat)){
-#j=x
+J=nrow(b.gp.hat)
+
+for(x in 1:nrow(b.gp.hat)){
+j=x
 
 
 
@@ -456,23 +456,50 @@ post.null[x,]=t(colSums(temp.null))
 lfsr.mat[x,]=as.matrix(apply(rbind(post.ups[x,],post.lows[x,]),2,function(x){1-max(x)}))
 
 lfsr=lfsr.mat[x,]
+}
 
-#if(plot=TRUE){
-#pdf(paste0("PostTissueMeans,B_",j))
+write.table(post.means,"post.means.no.sfa.txt")
+write.table(post.ups,"post.ups.no.sfa.txt")
+write.table(post.lows,"post.lows.no.sfa.txt")
+write.table(post.null,"post.null.no.sfa.txt")
+write.table(lfsr.mat,"lfsr.no.sfa.txt")
+```
+
+```{r}
+post.means=as.matrix(read.table("post.means.no.sfa.txt"))
+post.ups=as.matrix(read.table("post.ups.no.sfa.txt"))
+post.lows=as.matrix(read.table("post.lows.no.sfa.txt"))
+post.null=as.matrix(read.table("post.null.no.sfa.txt"))
+lfsr.mat=as.matrix(read.table("lfsr.no.sfa.txt"))
+
+
+
+
+false=which(truth$config==0)
+real=which(truth$config!=0)
+snps=c(false[1:9],18530,real[1:8],5166,548)
+
+
+
+for(x in 1:length(snps)){
+j=snps[x]
+
 par(mfrow=c(1,3))
 #barplot(post.means[j,],main=paste0("PostTissueMeans,B_",j),col=c(1:43),las=2,names=names[-44])
-b=barplot(abs(post.means[x,]),main=paste0("PostTissueMeans,B_",j),col=c(1:R),las=2,names=names,beside=TRUE,ylim=c(0,max(abs(post.means[x,]))+0.05))
-text(b, abs(post.means[x,]), labels=round(lfsr,2), pos=3, offset=.5)
+b=barplot(abs(post.means[j,]),main=paste0("PostTissueMeans,B_",truth[j,1]),col=c(1:R),las=2,names=names,beside=TRUE,ylim=c(0,max(abs(post.means[j,]))+0.05))
+lfsr=lfsr.mat[j,]
+text(b, abs(post.means[j,]), labels=round(lfsr,2), pos=3, offset=.5)
 legend("topright",legend=round(lfsr,2),col=c(1:R),pch=1,title="lfsr")
+
 b.mle=t(b.gp.hat[j,])
 a.m=abs(b.mle)
-a.p=abs(post.means[x,])
+a.p=abs(post.means[j,])
 low=min(a.m-0.01,a.p-0.01)
 high=max(a.m+0.01,a.p+0.01)
-plot(abs(b.mle),abs(post.means[x,]),main="PostMeanvsMLE",xlim=c(low,high),ylim=c(low,high),col=c(1:R))
+plot(abs(b.mle),abs(post.means[j,]),main="PostMeanvsMLE",xlim=c(low,high),ylim=c(low,high),col=c(1:R))
 
 true.m=as.numeric(truth[j,c(4:8)])
-plot(abs(true.m),abs(post.means[x,]),col=c(1:R),main="PostMeanvsTrueBeta")
+plot(abs(true.m),abs(post.means[j,]),col=c(1:R),main="PostMeanvsTrueBeta")
                                                                    
 abline(0,1)##concern because the order of magnitude diff, but prior weight heavy on (U.0kl[[2]][[3]]) which has very small avg. variance
 #dev.off()
@@ -481,16 +508,18 @@ abline(0,1)##concern because the order of magnitude diff, but prior weight heavy
 
 
 
+
+
 # pdf("plotalllfsr.pdf")
-# par(mfrow=c(5,5))
-# for(r in seq(1:R)){
-#   for (p in seq(1:R)){
-#     plot(lfsr.mat[,p],lfsr.mat[,r])
-#     }
-#   }
-# dev.off()
-# 
-# write.table(post.null,"lfdr.txt")
+#  par(mfrow=c(5,5))
+#  for(r in seq(1:R)){
+#    for (p in seq(1:R)){
+#      plot(lfsr.mat[,p],lfsr.mat[,r])
+#      }
+#    }
+#  dev.off()
+ 
+ 
 
 par(mfrow=c(2,3))
 for( r in seq(1:R)){
@@ -502,7 +531,7 @@ In order to compute the factors, we perform the following analysis.
 
 1) We perform the factor decomposition and use the first $K$ = 10 matrix approximations to estimate the covariance of X^{t}X. HOwever, rather than add them as we did in PCs, we compute the weights for each componenet separately so that we can quantify the weight on the each 'Factor Approximation' of the covariance. Recall that the loading corresponding to factor 1 corresponds to how much of 'master tissue pattern1' each tissue carries, and so the entry for that tissue in the $kth$ covariance matrix approximation will tell you the size of the effect in the direction of this 'master tissue-k specific pattern'. Similarly, the off-diagonal elements tell us the covariance between the performnace of tissues $i$ and $j$ in this direction. See my document section entitled 'Interpretation.' I also use the full rank $K=10$ approximation.
 
-```{r, eval=FALSE,cache=T}
+```{r, eval=FALSE}
 sfa -gen ./centered.t.stats.txt -g 6904 -n 43 -o tri -k 18 (here, we want each row to be maximally loaded on 1 factor, and each factor to correspond to a specific subset of tissues)
 sfa -gen ./50186centered.t.stats.txt -g 50186 -n 5 -o tritut -k 20 (here, we want each row to be maximally loaded on 1 factor, and each factor to correspond to a specific subset of tissues)
 
@@ -511,7 +540,7 @@ sfa -gen ./50186centered.t.stats.txt -g 50186 -n 5 -o tritut -k 20 (here, we wan
 Then, I will use $K=18$ factor representations of the covariance matrix of $X^{t}X$.
 ```{r using Factors, cache=TRUE}
 ##Explore how many factors SNPs are loaded on##
-
+##
 library("mvtnorm")
 lambda=as.matrix(read.table("tritut_lambda.out"))
 factor=as.matrix(read.table("tritut_F.out"))
@@ -520,7 +549,7 @@ hist(apply(lambda,1,function(x){length(x[x!=0])}),main="Number of Factors A SNP 
 
 
 #P=25
-P=5
+P=5 ##maximally 5 PCs
 get.prior.covar.Ukl=function(P,L,R,F=18){
   test=list()
   for(l in 1:L){
@@ -558,49 +587,71 @@ return(U.0kl=test)}
 U.0kl=get.prior.covar.Ukl(P=5,L=5,R=5,F=18)
 K=length(U.0kl[[1]])
 L=length(U.0kl)
+```
 ##Now, compute the additional likielihoods
-global.lik=matrix(unlist(likelihood(b.gp.hat,se.gp.hat)),ncol=K*L,byrow=TRUE)
-pis2=mixEM(matrix_lik=global.lik,prior=rep(1,K*L))
+```{r}
+#global.lik=matrix(unlist(likelihood(b.gp.hat,se.gp.hat)),ncol=K*L,byrow=TRUE)
+#write.table(global.lik,"global.like.withsfa.txt")
+gl=as.matrix(read.table("global.like.withsfa.txt"))
+pis2=mixEM(matrix_lik=gl,prior=rep(1,K*L))
 names.vec=matrix(NA,nrow=K,ncol=L)
   for(l in 1:L){ 
     for(k in 1:K){
       names.vec[k,l]=paste0("k=",k,";l=",l)}}
 
 write.table((cbind(as.vector(names.vec),pis2$pihat)),quote=FALSE,file="pi2klhat.txt")
-pi.hat=read.table(file="pi2klhat.txt")
-par(mfrow=c(2,1))
-barplot(pis2$pihat,main="mixEM estimated pi",names=names.vec,las=2,col=c(1:14))
+pi.hat=read.table(file="pi2klhat.txt")[,2]
+par(mfrow=c(2,3))
+  for(l in 1:L){ 
+      i=l-1
+      start=(i*K+1)
+      end=(l*K)
+barplot(pi.hat[start:end],main="mixEM estimated pi",names=names.vec[start:end],las=2,col=c(1:14))
+}
 
 
-x=updated.weights(b.gp.hat,se.gp.hat,global.lik)
-barplot(as.vector(x),main="naiiveWeights estimated pi",names=names.vec,las=2,col=c(1:14))
 
+par(mfrow=c(2,3))
+  for(l in 1:L){ 
+      i=l-1
+      start=(i*K+1)
+      end=(l*K)
+x=updated.weights(b.gp.hat,se.gp.hat,gl)[start:end]
+barplot(as.vector(x),main="naiiveWeights estimated pi",names=names.vec[start:end],las=2,col=c(1:14))
+}
 
 ```
 
 Now, compute the weights
 
-```{r, cache=TRUE}
+```{r, eval=FALSE, cache=TRUE}
 library("mvtnorm")
 J=dim(b.gp.hat)[1]
-post.weight.matrix=matrix(NA,nrow=J,ncol=L*K)
+#post.weight.matrix=matrix(NA,nrow=J,ncol=L*K)
 
 
 
-for(j in 1:J){
-    b.mle=as.vector(t(b.gp.hat[j,]))##turn i into a 43 x 1 vector
-    V.gp.hat=diag(se.gp.hat[j,])^2
-    pis=pi.hat[,2]
-    U.0kl=U.0kl
-    post.weight.matrix[j,]=as.vector(post.weight.func(pis,U.0kl,V.gp.hat,b.mle))
-}
+# ##for(j in 1:J){
+#     b.mle=as.vector(t(b.gp.hat[j,]))##turn i into a R x 1 vector
+#     V.gp.hat=diag(se.gp.hat[j,])^2
+#     pis=pi.hat[,2]
+#     U.0kl=U.0kl
+#     post.weight.matrix[j,]=as.vector(post.weight.func(pis,U.0kl,V.gp.hat,b.mle))
+# ##}
+
+#write.table(post.weight.matrix,"post.weight.matrix.txt")
 ```
 
+```{r}
+post.weight.matrix=as.matrix(read.table("post.weight.matrix.txt"))
+```
 
+Here is the code again to compute the component and tissue-specific means.
 
-```{r,cache=TRUE}
+```{r,eval=FALSE}
 
-
+(K=length(U.0kl[[1]]))
+(L=length(U.0kl))
 all.covs=list()
 all.means=list()
    all.up=list()
@@ -609,7 +660,7 @@ all.means=list()
 J=dim(b.gp.hat)[1]
 #lapply(seq(1:J),function(j){
   for(j in 1:J){
-    b.mle=as.vector(t(b.gp.hat[j,]))##turn i into a 43 x 1 vector
+    b.mle=as.vector(t(b.gp.hat[j,]))##turn i into a R x 1 vector
     V.gp.hat=diag(se.gp.hat[j,])^2
     all.covs[[j]]=list()
     all.means[[j]]=list()
@@ -658,16 +709,14 @@ J=dim(b.gp.hat)[1]
 ```
 
 
-```{r, cache=TRUE}
+```{r, eval=FALSE,cache=TRUE}
 L=5
+K=22
 ls.mat=read.table("lfsr.50186.txt")
 apply(ls.mat,2,which.min)
 apply(ls.mat,2,which.max)
 
-false=which(truth$config==0)
-real=which(truth$config!=0)
-snps=c(false[1:9],18530,real[1:8],5166,548)
-J=length(snps)
+
 
   
 post.means=matrix(NA,nrow=J,ncol=R)
@@ -676,15 +725,15 @@ post.lows=matrix(NA,nrow=J,ncol=R)
 post.null=matrix(NA,nrow=J,ncol=R)
 lfsr.mat=matrix(NA,nrow=J,ncol=R)
 
-for(x in 1:length(snps)){
-j=snps[x]
+
 #if(plot=FALSE)
-  #{J=nrow(b.gp.hat)
-#for(x in 1:nrow(b.gp.hat)){
-#j=x
+J=nrow(b.gp.hat)
 
-
-
+post.weight.matrix=as.matrix(read.table("post.weight.matrix.txt"))
+K=length(U.0kl[[1]])
+  L=length(U.0kl)
+for(x in 1:nrow(b.gp.hat)){
+j=x
 mean.list=all.means[[j]]
 upper.list=all.up[[j]]
 lower.list=all.low[[j]]
@@ -702,13 +751,15 @@ temp.null=NULL
 
 for(k in 1:K){
 for(l in 1:L){
-temp=rbind(as.vector(post.weight.mat[k,l]*mean.list[[k]][[l]]),temp)##creates a 6x43 matrix of posterior means, but in [k=3,l=2][k=3,l=1][k=2,l=2][k=2,l=1] etc. (which is ok because we simply sum)
+  post.weight.mat[k,l]=as.numeric(post.weight.mat[k,l])
+  
+temp=rbind(as.vector(as.numeric(post.weight.mat[k,l])*mean.list[[k]][[l]]),temp)##creates a 6x43 matrix of posterior means, but in [k=3,l=2][k=3,l=1][k=2,l=2][k=2,l=1] etc. (which is ok because we simply sum)
 
-up.row=as.vector(upper.list[[k]][[l]]*post.weight.mat[k,l])
+up.row=as.vector(upper.list[[k]][[l]]*as.numeric(post.weight.mat[k,l]))
 up.row=t(as.matrix(up.row))
 temp.up=rbind(temp.up,up.row)
-temp.low=rbind(as.vector(post.weight.mat[k,l]*as.matrix(lower.list[[k]][[l]])),temp.low)
-temp.null=rbind(as.vector(post.weight.mat[k,l]*as.matrix(null.list[[k]][[l]])),temp.null)
+temp.low=rbind(as.vector(as.numeric(post.weight.mat[k,l])*as.matrix(lower.list[[k]][[l]])),temp.low)
+temp.null=rbind(as.vector(as.numeric(post.weight.mat[k,l])*as.matrix(null.list[[k]][[l]])),temp.null)
 
 }
 }
@@ -719,31 +770,81 @@ post.null[x,]=t(colSums(temp.null))
 lfsr.mat[x,]=as.matrix(apply(rbind(post.ups[x,],post.lows[x,]),2,function(x){1-max(x)}))
 
 lfsr=lfsr.mat[x,]
+print(j)
+}
 
-#if(plot=TRUE){
-#pdf(paste0("PostTissueMeans,B_",j))
+write.table(post.means,"post.means.with.sfa.txt")
+write.table(post.ups,"post.ups.with.sfa.txt")
+write.table(post.lows,"post.lows.with.sfa.txt")
+write.table(post.null,"post.null.with.sfa.txt")
+write.table(lfsr.mat,"lfsr.withsfa.txt")
+
+```
+
+And finally, we can plot the posterior means and the lsfr for each tissue.
+```{r}
+post.means=as.matrix(read.table("post.means.with.sfa.txt"))
+post.ups=as.matrix(read.table("post.ups.with.sfa.txt"))
+post.lows=as.matrix(read.table("post.lows.with.sfa.txt"))
+post.null=as.matrix(read.table("post.null.with.sfa.txt"))
+lfsr.mat=as.matrix(read.table("lfsr.withsfa.txt"))
+
+
+
+lfsr1=read.table("lfsr.nosfa.txt")
+
+false=which(truth$config==0)
+real=which(truth$config!=0)
+snps=c(false[1:9],18530,real[1:8],5166,548)
+
+
+for(x in 1:length(snps)){
+j=snps[x]
+
 par(mfrow=c(1,3))
 #barplot(post.means[j,],main=paste0("PostTissueMeans,B_",j),col=c(1:43),las=2,names=names[-44])
-b=barplot(abs(post.means[x,]),main=paste0("PostTissueMeans,B_",j),col=c(1:R),las=2,names=names,beside=TRUE,ylim=c(0,max(abs(post.means[x,]))+0.05))
-text(b, abs(post.means[x,]), labels=round(lfsr,2), pos=3, offset=.5)
+b=barplot(abs(post.means[j,]),main=paste0("PostTissueMeans,B_",truth[j,1]),col=c(1:R),las=2,names=names,beside=TRUE,ylim=c(0,max(abs(post.means[j,]))+0.05))
+lfsr=lfsr.mat[j,]
+text(b, abs(post.means[j,]), labels=round(lfsr,2), pos=3, offset=.5)
 legend("topright",legend=round(lfsr,2),col=c(1:R),pch=1,title="lfsr")
+
 b.mle=t(b.gp.hat[j,])
 a.m=abs(b.mle)
-a.p=abs(post.means[x,])
+a.p=abs(post.means[j,])
 low=min(a.m-0.01,a.p-0.01)
 high=max(a.m+0.01,a.p+0.01)
-plot(abs(b.mle),abs(post.means[x,]),main="PostMeanvsMLE",xlim=c(low,high),ylim=c(low,high),col=c(1:R))
+plot(abs(b.mle),abs(post.means[j,]),main="PostMeanvsMLE",xlim=c(low,high),ylim=c(low,high),col=c(1:R))
 
 true.m=as.numeric(truth[j,c(4:8)])
-plot(abs(true.m),abs(post.means[x,]),col=c(1:R),main="PostMeanvsTrueBeta")
+plot(abs(true.m),abs(post.means[j,]),col=c(1:R),main="PostMeanvsTrueBeta")
                                                                    
 abline(0,1)##concern because the order of magnitude diff, but prior weight heavy on (U.0kl[[2]][[3]]) which has very small avg. variance
 #dev.off()
 
 }
 
+# pdf("plotalllfsr.pdf")
+# par(mfrow=c(5,5))
+# for(r in seq(1:R)){
+#   for (p in seq(1:R)){
+#     plot(lfsr.mat[,p],lfsr.mat[,r])
+#     }
+#   }
+# dev.off()
+# 
+# write.table(post.null,"lfdr.txt")
+
+par(mfrow=c(2,3))
+for( r in seq(1:R)){
+  plot(post.null[,r],lfsr.mat[,r],main=paste0("lfsr",r,"vs lfdr", r))
+}
 
 
+
+par(mfrow=c(2,3))
+for( r in seq(1:R)){
+  plot(lfsr.mat[,r],lfsr1[,r],main=paste0("lfsr.noSFA",r,"vs lfsr.SFA", r),xlab="lfsrwithSFA",ylab="lfsr.noSFA")
+}
 
 ```
 

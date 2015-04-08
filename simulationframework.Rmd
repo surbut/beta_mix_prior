@@ -1,0 +1,80 @@
+---
+title: "simulation"
+output: html_document
+---
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+###Generate Simulation Data##
+## Generate Covariance Matrix from which to draw B.g##
+
+gen.cov=function(oma2.plus.phi2=0.8^2,oma2.over.oma2.plus.phi2=0.75,nb.subgroups=3){ 
+    oma2 <- oma2.plus.phi2 * oma2.over.oma2.plus.phi2 # prior var of avg SNP effect
+    phi2 <- oma2.plus.phi2 * (1 - oma2.over.oma2.plus.phi2) # prior var of subgroup SNP effect, given avg effect
+    Sigma.beta.g.1 <- matrix(rep(oma2, nb.subgroups^2), nb.subgroups, nb.subgroups) +
+        diag(rep(phi2, nb.subgroups), nb.subgroups, nb.subgroups)
+    return(Sigma.beta.g.1)}
+
+library("mvtnorm")
+
+Sigma.beta.g=gen.cov()
+source("~/Dropbox/utils/utils_eqtlbma.R")
+source("~/src/eqtlbma/eqtlbma/scripts/utils_eqtlbma.R")
+libary("MASS")
+M=10000
+nb.inds=100
+R=3
+nb.subgroups=R
+
+prob=rbeta(M,1,1)
+X.g <- t(sapply(prob,function(x){rbinom(nb.inds,prob=x,size=2)}))
+B.g <- t(sapply(seq(1:M),function(x){matrix(mvrnorm(n=1, mu=rep(0, nb.subgroups),
+                                  Sigma=Sigma.beta.g),
+                          nrow=1, ncol=nb.subgroups)}))
+cov.err.S=diag(nb.subgroups)
+cov.err.I=diag(nb.inds)
+E <- lapply(seq(1:M),function(x){matvrnorm(n=1, M=matrix(0, nrow=nb.inds, ncol=nb.subgroups),U=cov.err.I, V=cov.err.S)[,,1]})
+
+##create raw data files
+data.list=lapply(seq(1:M),function(m){Y <- as.matrix(X.g[m,]) %*% t(as.matrix(B.g[m,])) + E[[m]]})
+
+
+##save summary statistics###
+
+beta.hat=matrix(NA,ncol=R,nrow=M)
+se.betahat=matrix(NA,ncol=R,nrow=M)
+sigma=matrix(NA,ncol=R,nrow=M)
+
+
+for(m in seq(1:M)){
+                   Y=data.list[[m]]
+                   geno=X.g[m,]
+                   fit=lm(Y~geno)
+                   if(length(unique(geno))<2){
+                     beta.hat[m,]=rep(0,R)
+                     se.betahat[m,]=rep(0,R)
+                     sigma[m,]=rep(0,R)}
+else{
+beta.hat[m,]=fit$coeff[2,]
+se.betahat[m,]=sapply(seq(1:3),function(x){summary(fit)[[x]]$coeff[2,2]})
+sigma[m,]=sapply(seq(1:3),function(x){summary(fit)[[x]]$sigma})
+ }
+}
+
+
+write.table(beta.hat,file="beta.hat.geno.txt")
+write.table(se.betahat,file="se.beta.hat.geno.txt")
+write.table(sigma,file="sigma.hat.txt")
+
+```
+
+You can also embed plots, for example:
+
+```{r, echo=FALSE}
+plot(cars)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

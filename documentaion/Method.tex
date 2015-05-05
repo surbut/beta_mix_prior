@@ -1,0 +1,272 @@
+\nonstopmode  % to allow pdflatex to compile even if errors are raised (e.g. missing figures)
+
+\documentclass[10pt]{article}
+
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{bm}
+\usepackage{graphicx}
+% \graphicspath{{./figures/}} % save all figures in the same directory
+\usepackage{color} 
+\usepackage{hyperref}
+\usepackage{parskip}
+\setlength{\parindent}{0pt}
+
+% Text layout
+\topmargin 0.0cm
+\oddsidemargin 0.5cm
+\evensidemargin 0.5cm
+\textwidth 16cm 
+\textheight 21cm
+
+%% PLEASE INCLUDE ALL MACROS BELOW
+\newcommand{\etal}{\textit{et al.}} % use as "\etal{}" in citations
+%\newcommand{\Prob}{\mathbb{P}} % symbol for proba
+\newcommand{\Prd}{\mathsf{P}} % symbol for discrete proba
+\newcommand{\Exp}{\mathbb{E}} % symbol for expectation
+\newcommand{\Var}{\mathbb{V}} % symbol for variance
+\newcommand{\Cov}{\mathbb{C}} % symbol for covariance
+\newcommand{\Norm}{{\mathcal{N}}} % symbol for Normal distribution
+\newcommand{\BF}{{\text{BF}}} % symbol for Bayes factor
+\newcommand{\Lik}{{\mathcal{L}}} % symbol for likelihood
+\newcommand{\bma}{{\BF_\text{BMA}}}
+\newcommand{\bmalite}{{\BF_\text{BMAlite}}}
+\newcommand{\av}{\mbox{\boldmath$\alpha$}}
+\newcommand{\dv}{\bm{d}}
+\newcommand{\der}{{\text{d}}} % "derivation" symbol inside integrals
+\newcommand{\bv}{\mbox{\boldmath$\beta$}}
+\newcommand{\tauv}{\mbox{\boldmath$\tau$}}
+\newcommand{\cv}{\mbox{\boldmath$c$}}
+\newcommand{\bbv}{\tilde \bv}
+\newcommand{\bev}{\mbox{\boldmath$b$}}
+\newcommand{\ev}{\mbox{\boldmath$e$}}
+\newcommand{\thv}{\mbox{\boldmath$\theta$}}
+\newcommand{\tv}{\mbox{\boldmath$t$}}
+\newcommand{\fv}{\mbox{\boldmath$f$}}
+\newcommand{\Cv}{\mbox{\boldmath$C$}}
+\newcommand{\Dv}{\mbox{\boldmath$D$}}
+\newcommand{\Fv}{\mbox{\boldmath$F$}}
+\newcommand{\gav}{\mbox{\boldmath$\gamma$}}
+\newcommand{\Gav}{\mbox{\boldmath$\Gamma$}}
+\newcommand{\Kv}{\mbox{\boldmath$K$}}
+\newcommand{\iv}{\mbox{\boldmath$I$}}
+\newcommand{\vv}{\mbox{\boldmath$v$}}
+\newcommand{\pv}{\mbox{\boldmath$p$}}
+\newcommand{\hv}{\mbox{\boldmath$h$}}
+\newcommand{\gv}{\mbox{\boldmath$g$}}
+\newcommand{\wv}{\mbox{\boldmath$w$}}
+\newcommand{\Wv}{\mbox{\boldmath$W$}}
+\newcommand{\Pv}{\mbox{\boldmath$P$}}
+\newcommand{\Qv}{\mbox{\boldmath$Q$}}
+\newcommand{\Rv}{\mbox{\boldmath$R$}}
+\newcommand{\rv}{\mbox{\boldmath$r$}}
+\newcommand{\sv}{\mbox{\boldmath$s$}}
+\newcommand{\Sv}{\mbox{\boldmath$S$}}
+\newcommand{\Sigv}{\mbox{\boldmath$\Sigma$}}
+\newcommand{\qv}{\mbox{\boldmath$q$}}
+\newcommand{\Mv}{\mbox{\boldmath$M$}}
+\newcommand{\mv}{\mbox{\boldmath$\mu$}}
+\newcommand{\mvg}{\mbox{\boldmath$\mu_g$}}
+\newcommand{\Lv}{\mbox{\boldmath$L$}}
+\newcommand{\lav}{\mbox{\boldmath$\lambda$}}
+\newcommand{\Tv}{\mbox{\boldmath$T$}}
+\newcommand{\Xv}{\mbox{\boldmath$X$}}
+\newcommand{\xv}{\mbox{\boldmath$x$}}
+\newcommand{\Uv}{\mbox{\boldmath$U$}}
+\newcommand{\Vv}{\mbox{\boldmath$V$}}
+\newcommand{\yv}{\mbox{\boldmath$y$}}
+\newcommand{\yvg}{\mbox{\boldmath$y_g$}}
+\newcommand{\Yv}{\mbox{\boldmath$Y$}}
+\newcommand{\Zv}{\mbox{\boldmath$Z$}}
+\newcommand{\zv}{\mbox{\boldmath$z$}}
+\newcommand{\lv}{\bf{1}}
+\newcommand{\muLS}{\ensuremath{\hat{\mv}}}
+\newcommand{\SigmaLS}{\ensuremath{\hat{\Sigma}}}
+\newcommand{\fvPanel}{\ensuremath{\fv^{\rm panel}}}
+\newcommand{\isa}{\ensuremath{\sigma_a^{-2}}}
+\newcommand{\bfa}{\ensuremath{{\rm BF}}}
+\newcommand{\hbfes}{\ensuremath{\widehat {\rm BF}^{\rm ES}}}
+\newcommand{\hbfesmeta}{\ensuremath{\widehat {{\rm BF}}^{\rm ES}_{\rm meta}}}
+\newcommand{\hbfesfix}{\ensuremath{\widehat {{\rm BF}}^{\rm ES}_{\rm fix}}}
+\newcommand{\hbfesmax}{\ensuremath{\widehat {{\rm BF}}^{\rm ES}_{\rm maxH}}}
+\newcommand{\hbfee}{\ensuremath{ \widehat {\rm BF}^{\rm EE} }}
+\newcommand{\abfes}{\ensuremath{{\rm ABF^{ES}}}}
+\newcommand{\abfee}{\ensuremath{{\rm ABF^{EE}}}}
+\newcommand{\abfesc}{\ensuremath{{\rm A^*BF^{ES}}}}
+
+\newcommand{\bmat}{\mathbf{\hat{B}}}
+
+\newcommand{\semat}{\mathbf{\hat{SE}}}
+\newcommand{\tmat}{\mathbf{X_{t}}}
+\newcommand{\tcen}{\mathbf{X_{c}}}
+\newcommand{\svd}{\mathbf{U} \mathbf{D} \mathbf{V^{t}}}
+\newcommand{\pcu}{\mathbf{U}}
+\newcommand{\pcv}{\mathbf{V}}
+\newcommand{\pcd}{\mathbf{D}}
+\newcommand{\sfa}{\mathbf{\Lambda}\mathbf{F}}
+\newcommand{\sfat}{(\mathbf{F}\mathbf{\Lambda})^{t}}
+\newcommand{\load}{\mathbf{\Lambda}}
+\newcommand{\factor}{\mathbf{F}}
+
+
+
+
+%% END MACROS SECTION
+
+\begin{document}
+\title{Explicit Methodology}
+\author{Sarah Urbut}
+\maketitle
+
+The goal of this document is to explicitly outline what I've done in extending the beta mixed prior model to a case in which we do not put a prior on the covariance matrix for $\bm{\b}_{j}$ which explicitly recognizes the configuration model. 
+
+First, define our terms. By maximum likelihood in each tissue separately, we can easily obtain the estimates of the standardized genotype effect sizes, $\hat{\bm{b}}_{j}$, and their squared standard errors recorded on the diagonal of an $R \times R$ matrix noted $\hat{V}_{j} = \Var(\hat{\bm{b}}_{j})$. 
+
+
+
+The likelihood for this gene-snp pair is then:
+
+\begin{equation}
+  \label{new_lik}
+  \hat{\bm{b}}_{j} | \bm{b}_{j} \sim \Norm_R(\bm{b}_{j}, \hat{V}_{j})
+\end{equation}
+
+ For all $j$  gene-snp pairs, beta $\bm{b}_{j}$ represent the unknown standardized effect of a snp `p' on gene 'g'. 
+ 
+ \begin{equation}
+  \label{prior_b_mixt_grid}
+  \bm{b}_{j} | \bm{\pi},\Uv_0 \sim \sum_{k,l} \pi_{k,l} \; \Norm_R(\bm{0}, \omega^{2}_l U_{k})
+\end{equation}
+
+Where here I allow  $\pi_{k,l}$ to represent the (unknown) prior weight on prior covariance matrix $U_{k}$ and `stretch factor' $\omega_{1...L}$. Here, I use two $\omegas$ (0.1 and 0.075) and 14 matrices for $U_{k}$. See section on choice of covariance matrices. Furhtermore, we allow the latent variable $z_{j}$ to indicate which combination of covariance matrix and stretch factor we are considering, thus $z_{j}$ can take on $KxL$ values $z_{j}$ = $[1,1] . . . [k,l]$ 
+
+We know that for a single normal, the posterior on  $\bm{b}_{j} | \Uv_0$ is  simply: 
+\[
+\bm{b}_{j} | \hat{\bm{b}}_{j} \sim \Norm_R(\bm{\mu}_{j1}, U_{j1})
+\]
+where:
+\begin{itemize}
+\item $\bm{\mu}_{j1} = U_{j1} (\hat{V}_{j}^{-1} \hat{\bm{b}}_{j})$;
+\item $U_{j1} = (U_{0}^{-1} + \hat{V}_{j}^{-1})^{-1}$.
+\end{itemize}
+
+
+Which leads us to a corresponding multivariate mixture posterior on $\bm{b}_{gp}$ as this prior is conjugate to likelihood.
+
+\begin{equation}
+\begin{aligned}
+  \label{post_b_j_init}
+p(\bm{b}_{j} | \hat{\bm{b}}_{j}, \hat{V}_{j}, \hat{\bm{\pi}} 
+&= \sum_{k=1,l=1}^{K,L} p(\bm{b}_{j} | \hat{\bm{b}}_{j}, \hat{V}_{j}, k, l) \Prd(z_{j}=k,l | \hat{\bm{b}}_{j}, \hat{V}_{j}, \hat{\bm{\pi} }),%v_{gp}=1)
+ \\
+&= \sum_{k=1,l=1}^{K,L} \p(\bm{b}_{j} | \hat{\bm{b}}_{j}, \hat{V}_{j}, z_{j}=k,l)%,v_{gp}=1) 
+\tilde \pi_{k,l}
+\end{aligned}
+\end{equation}
+
+Where the posterior weight $\tilde \pi_{k,l}$ is simply 
+
+ 
+ \begin{equation}
+ \label{post.pi}
+\tilde \pi_{k,l} =\frac{\Pr(\bm{b}_{j} | \hat{\bm{b}}_{j}, \hat{V}_{j}, z_{j}=k,l) \hat \pi_{kl}} {\sum_{k=1,l=1}^{K,L} \Pr(\bm{b}_{j} | \hat{\bm{b}}_{j}, \hat{V}_{j}, z_{j}=k,l) \hat\pi_{kl}}
+\end{equation}
+
+Note also that $\hat\pi_{kl}$ represents the prior weights which are estimated hierarchically, using an EM algorithm, detailed in the corresponding section.
+
+\section{Choice of Covariance Matrices $U_{kl}$}
+
+Suppose that we form the following matrices to compute the relevant quantities: 
+
+\begin{itemize}
+\item $\mathbf{\hat{B}}$, is the $J \times R$ matrix of standardized MLEs for each snp-gene pair across all $R=43$ tissues;
+\item $\mathbf{\hat{SE}}$ is the corresponding $J \times R$ matrix of standard errors of the corresponding $\hat{\bm{b}}_{j}$ across all $R=43$ tissues;
+\item $\tmat$ is the corresponding $J \times R$ matrix of $t$ computed for each gene-snp pair statistics across all $R=43$ tissues;
+\item $\tcen$ is the $RxR$ covariance matrix of samples, computed by subtracting the column means for each tissue from $X_{t}$ and computed as $\frac{1}{J} X_{t}^{t} X_{t}$
+\item $\svd$ is the singular value decomposition of $X_{t}$, thus, $U$ is the $JxR$ matrix of eigenvectors of the 'feature covariance matrix' in its columns, $d$ is the $RxR$ diagonal matrix of singular values, and $V^{t}$ is the $RxR$ matrix with the eigenvectors of the tissue covariance matrix in its rows.
+\item $\sfa$ is the sparse factor decomposition of $\tcen^{t}$, thus $\mathbf{\lambda}$ is $JxQ$ matrix of factor loadings, where Q is the number of factors chosen and ${\mathbf{F}}$ is $QxR$ matrix of factors, loosely corresponding to the `eigenconfigurations' discussed in the 'next steps pdf'. Essentially, each factor may be composed of multiple tissues, analogous to the configuration model, in which a tissue can be active in multiple configurations and a Factor can, in turn, contain many active tissues. However, a Sparse Prior on the rows of ${\mathbf{\lambda}}$ means that a SNP is maximally active in one Factor.
+
+\end{itemize}
+
+
+
+For a given $\omega \in [0.075, 0.1]$, we specify 4 `types' of $RxR$ prior correlation matrices $U_{k,l}$.
+\begin{itemize}
+
+\item $U_{k=1,l=1,2}$ = $\omega_l$ $\mathbf{I}_{R}$
+
+\item $U_{k=2,l=1,2}$ = $\omega_l$ $\tcen$ The (naiively) estimated tissue covariance matrix
+
+\item $U_{k=3,l=1,2}$ = $\omega_l$ $\frac{1}{J}$ $\pcv_{1..p}$ $\pcd^{2}_{1..p}$   $\pcv^{t}_{1..p}$ is the rank $p$ eigenvector approximation of the tissue covariance matrices, i.e., the sum of the first $p$ eigenvector approximations.
+
+\subsection{Factor Analysis Matrices}
+
+Let $\load$ represent the $J$ x $Q$ matrix of loadings, such that each SNP is maximally loaded on one $Factor$. Essentially, we have put a sparse prior on the rows of $\load$ such that each SNP can be a member of at most one factor class. The $K$x$R$ matrix of factors $\fact$ then represents the matrix of 'eigenconfigurations' which indicates expression in a particular subset of tissues - each Factor may indicate activity in one, several or no tissues. As a critical difference with PCA, the factors can outnumber the tissues and each tissue can be a member of more than one factor.
+
+\item $U_{k=4:13,l=1,2}$ = $\frac{1}{J}$ $\sfat_{q}$ $\sfa_{q}$ corresponding to the $\qth$ sparse factor representation of the tissue covariance matrix (not the sum of the first $q$, as above)
+ 
+
+
+\item $U_{k=14,l=1,2}$ = $\frac{1}{J}$ $\sfat$ $\sfa$ is the sparse factor representation of the tissue covariance matrix, estimated using all $q$ factors.
+
+\end{itemize}
+
+\section{EM Algorithm Outline}
+
+Here the incomplete-data likelihood function is
+
+\begin{equation}
+L(\mathbf{\pi};{\hat{\bm{b}},\mathbf{z}) = P({\hat{\bm{b}}},\mathbf{z}| \theta) = \prod_{j=1}^J \sum_{k,l=1}^{KL} \pi_{kl} \Pr(\hat{\bm{b}}| z_{j}=[k,l])
+\end{equation}
+
+Now, in order to estimate the hierarchical prior weights $\pi_{k,l}$ we compute the $KxL$ dimensional likelihood at each each gene snp pair $j$ by evaluating the probability of observing $\bm{\hat{\b}_{j}}$ given that we know the true $\bm{b_{j}}$ arises from component $k,l$: 
+
+\begin{equation}
+\begin{aligned}
+\mathcal{L}(\mathbf{\pi_{kl}}; \hat{\bm{b}}_{j}, U_{0,k,l} \hat{V}_{j})\\
+&=\Pr(\hat{\bm{b}}_{j}| z_{j}=[k,l])\\
+&=\Norm_R(\hat{\bm{b}}_{j}; \bm{0}, U_{0kl'} + \hat{V}_{j}})
+\end{aligned}
+\end{equation}
+
+
+Which means we form a $J$ $\times$ $KL$ dimensional matrix entitled `global.lik' in my .Rmd file,where in each row vector is the probability of the vector of observed MLEs given that the true $\b_{j}$ arose from element $K,L$, as specified by its corresponding prior covariance matrix $\mathbf{U_{0kl}}$ . You simply compute the probability from an $R$ dimensional multivariate normal with mean $\mathbf{0}$ and variance  $\mathbf{U_{0kl}}$ + $\mathbf{\hat{V}_{j}}$. I treat each of the $j$ rows as an i.i.d. sample from which to maximize the likelihood over using the mixEM algorithm. 
+
+In order to compare this with an 'intuitive estimate', I sum the columns and divide by the total likelihood of the dataset. Then, we can compare the estimates: 
+
+\begin{equation}
+\hat{\pi}_{naiive.kl} = \frac{\sum_{j} \mathbf{L}(\mathbf{\pi}; \hat{\bm{b}}_{j}, U_{k,l} \hat{V}_{j})}{\sum_{j,k,l} \mathbf{L}(\mathbf{\pi}; \hat{\bm{b}}_{j}, U_{k,l} \hat{V}_{j})}
+\end{equation}
+
+with the output of $mixEM$. These results are compared in the two bar plots entitled ``mixEM estimated pi" and ``naiiveWeights estimated pi" and attached at the end of this document.
+
+\section{Posterior Mean Plots}
+
+For each of the $j$ pairs and each component $k$ and $l$ I can compute the posterior mean and covariance matrix using the formula for a single multivariate I store these in the objects $all.means$ and $all.covs$, where $all.means[j][k][l]$ corresponds to the posterior mean for the $jth$ pair evaluated with prior covariance matrix $U_{0kl}$ and results from the calculation: $\bm{\mu}_{jkl1} =\bm{U_{jkl1} (\hat{V}_{j}}^{-1} \hat{\bm{b}}_{j})$ and $all.covs[j][k][l]$ = $\bm{U_{jkl1} = (U_{0kl}^{-1}}$+ $\bm{\hat{V}_{j}}^{-1})^{-1}$.
+
+For each of the $j$ pairs, I generate a corresponding posterior-weight matrix using $\tilde \pi_{k,l}$ as in (\ref{post.pi}) where I evaluate the probability of the data at each component $[kl]$ using the corresponding prior covariance matrix in computing $\Norm_R(\hat{\bm{b}}_{j}; \bm{0}, U_{0kl'} + \hat{V}_{j}})$ and weight the resulting likelihood by its $EM$ estimated prior weight, and then divide by the corresponding sum over all prior weights and likelihoods. This is computed using the post.weight.mat function function I have written in R.
+
+In practice: for each of the $j$ pairs, we can then compute the corresponding $r$ dimensional vector of posterior means $\bm{\mu}_{j1}$ as simply the sum of each element of $all.means[j][k][l]$ weighted by its corresponding posterior weight. You can see in the code chunk that for pair $j$, I loop through each of the $k,l$ component pairs and store the $r$ dimensional row vector of weighted $\tilde\pi_{jkl} \bm \mu_{jkl}$ for each component in the $K$ $\times$ $L$  by $R$ matrix $temp$. I then sum the columns to compute a vector of aggregated posterior means $\bm{\mu}_{j1}$ to produce an $r$ dimensional row vector which I store in $post.means$. I complete this for all $j$ gene SNP I then plot this aggregated posterior mean vector $\bm{\mu_{j1}}$ for 10 gene SNP pairs in the corresponding plots. 
+
+
+\end{itemize}
+
+\section{Figures} 
+
+\begin{figure}[htbp]
+\includegraphics[width=4in]{weightcomparison.pdf}
+\caption{Comparing Estimation of Prior component weights, $\pi_{k,l}$ using mixEM and summing over one iteration of the likelihood}
+\end{figure}
+
+
+
+
+\begin{figure}[htbp]
+\includegraphics[width=4in]{postmeans7.pdf}
+\caption{Weighted Posterior Mean Across All components for gene snp pair $7$. See positive in most tissues}
+\end{figure}
+
+
+\end{document}
+
+

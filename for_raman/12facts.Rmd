@@ -1,0 +1,663 @@
+---
+title: "fullgrid.nopcs.12f"
+output: html_document
+---
+
+
+```{r setup, include=TRUE}
+library(knitr)
+opts_chunk$set(echo=TRUE, warning=TRUE, message=TRUE, cache=TRUE)#, fig.width=12, fig.height=8, fig.path='Figs/')
+options(digits=3)
+seed <- 1859; set.seed(seed)
+suppressPackageStartupMessages(library(mvtnorm))
+```
+The purpose of this document is to benchmark our data against the real data.
+
+```{r readindata, eval=TRUE, echo=FALSE}
+setwd("/Users/sarahurbut/Dropbox/cyclingstatistician/beta_gp_continuous")
+b.gp.hat=na.omit(read.table("50186simulatedbeta.hat.std.txt",header=F,skip=1)[,-c(1,2)])#[1:10000,]
+se.gp.hat=na.omit(read.table("50186simulatedse.hat.std.txt",header=F,skip=1)[,-c(1,2)])#[1:10000,]
+t.stat=na.omit(read.table("50186simulatedt.hat.std.txt",header=F,skip=1)[,-c(1,2)])#[1:10000,]
+source("mixEm.R")
+library("mvtnorm")
+truth.table=read.table("/Users/sarahurbut/Dropbox/cyclingstatistician/beta_gp_continuous/trueprior/50186.full.truth.txt")
+##make sure to standardize the effect sizes##
+truth=cbind(truth.table[,1:3],truth.table[,9:13]/truth.table[,4:8])
+
+source("~/Dropbox/utils/utils_eqtlbma.R")
+
+##' @param U.0k.l let U.0k.l represent a specific matrix in U.0kl (.e.g, U.0kl[[l]][[k]])
+##' @return post.b.gpkl.cov ## returns an R*R posterior covariance matrix for jth gene snp pair
+##' @return post.b.gpkl.mean return a 1 * R vector of posterior means for a given prior covariance matrix
+
+post.b.gpkl.cov <- function(V.gp.hat.inv, U.0k.l){
+  U.gp1kl <- U.0k.l %*% solve(V.gp.hat.inv %*% U.0k.l + diag(nrow(U.0k.l)))
+  return(U.gp1kl)
+}
+
+post.b.gpkl.mean <- function(b.mle, V.gp.hat.inv, U.gp1kl){
+  mu.gp1kl <- U.gp1kl %*% V.gp.hat.inv %*% b.mle
+  return(mu.gp1kl)
+}
+
+
+autoselect.mixsd = function(betahat,sebetahat,mult){
+ sebetahat=sebetahat[sebetahat!=0] #To avoid exact measure causing (usually by mistake)
+ sigmaamin = min(sebetahat)/10 #so that the minimum is small compared with measurement precision
+ if(all(betahat^2<=sebetahat^2)){
+   sigmaamax = 8*sigmaamin #to deal with the occassional odd case where this could happen; 8 is arbitrary
+ }else{
+   sigmaamax = 2*sqrt(max(betahat^2-sebetahat^2)) #this computes a rough largest value you'd want to use, based on idea that sigmaamax^2 + sebetahat^2 should be at least betahat^2   
+ }
+ if(mult==0){
+   return(c(0,sigmaamax/2))
+ }else{
+   npoint = ceiling(log2(sigmaamax/sigmaamin)/log2(mult))
+   return(mult^((-npoint):0) * sigmaamax)
+ }
+}
+
+mix.weights=sapply(seq(1:ncol(b.gp.hat)),function(r){autoselect.mixsd(betahat = b.gp.hat[,r],sebetahat = se.gp.hat[,r],mult=sqrt(2))})
+(omega=c(0,min(mix.weights),rowMeans(mix.weights)[2:(nrow(mix.weights)-1)],max(mix.weights)))
+length(omega)
+#omega.table=data.frame(omega)
+```
+
+
+###WITH SFA##
+```{r loadnewcovarfunc, cache=TRUE}
+setwd("/Users/sarahurbut/Dropbox/cyclingstatistician/beta_gp_continuous")
+A="sfareal.12factors.may4fullgrid"
+L = 10
+R=ncol(b.gp.hat)#number of tissues
+X.t=as.matrix(t.stat)
+X.real=X.t[which(truth$config!=0),]
+X.c=apply(X.real,2,function(x) x-mean(x)) ##Column centered matrix of t statistics
+R=ncol(X.t)
+M=nrow(X.c)
+
+
+library("mvtnorm")
+lambda=as.matrix(read.table("tri_realt_lambda.out"))
+factor=as.matrix(read.table("tri_realt_F.out"))
+
+unit.f=t(apply(factor,1,function(x){x/sqrt(sum(x^2))}))
+
+hist(apply(lambda,1,function(x){length(x[x!=0])}),main="Number of Factors A SNP is loaded on",xlab="NumberofFactors")
+
+omega.table=read.table("~/Dropbox/cyclingstatistician/beta_gp_continuous/omegafull.txt")
+
+
+
+
+#P=25
+P=2 ##maximally 5 PCs
+get.prior.covar.Ukl=function(P,L,R,factors,omega.table){
+  test=list()
+  for(l in 1:L){
+    test[[l]]=list()
+    omega=omega.table[l,]
+    test[[l]][[1]]=omega*diag(1,R)# the first covariance matrix will be the 'sopped up' identity
+    data.prox=((t(X.c)%*%X.c)/M)
+    d.norm=data.prox/max(diag(data.prox))
+    
+    #test[[l]][[2]]=omega*((t(X.c)%*%X.c)/M)
+       
+    test[[l]][[2]]=omega*d.norm
+    
+    svd.X=svd(X.c)##perform SVD on sample centered
+    #svd.X=svd(X.t)##peform SCD on unsample centered (same result for v)
+    v=svd.X$v;u=svd.X$u;d=svd.X$d
+    
+    cov.pc=1/M*v[,1:P]%*%diag(d[1:P])%*%t(u[,1:P])%*%t(v[,1:P]%*%diag(d[1:P])%*%t(u[,1:P]))
+    ##Use the rank P summary representation, also has shrinkage implications 
+    cov.pc.norm=cov.pc/max(diag(cov.pc))
+    
+    #cov.pc=1/M*v[,1:P]%*%diag(d[1:P])%*%t(v[,1:P])##Use the rank P summary representation  
+    
+    test[[l]][[3]]=omega*(cov.pc.norm)
+    if(factors!=0){for(f in 1:factors){
+      load=as.matrix(lambda[,f])
+      fact=t(as.matrix(factor[f,]))
+      rank.prox=load%*%fact
+      a=(1/M*(t(rank.prox)%*% rank.prox))
+      a[is.nan(a)] = 0
+      a.norm=a/max(diag(a))
+      test[[l]][[f+3]]=omega*a.norm
+    }
+    full.rank=lambda%*%factor
+    b=(1/M*(t(full.rank)%*%full.rank))
+    b[is.nan(b)]=0
+    b.norm=b/max(diag(b))
+    test[[l]][[factors+4]]=omega*b.norm}}##Note that this is NOT equivalent to the original covariance matrix because  the maximum number of cactors is limited to 10
+  
+  return(U.0kl=test)}
+
+
+```
+
+
+
+Now that we have the prior covariance matrices, we can maximize the likelihood $L(\pi;\hat\beta_{j},se_{j})$ by computing $Pr(\hat \beta_{j} | Component k,l)$ for each gene componenet at each each gene SNP pair and then finding the optimal combination among all gene SNP pairs.
+
+```{r,echo=TRUE,cache=TRUE}
+##' @return Compute a likelihood using the prior covariance matrix for each gene SNP pair in the rows and componenets in the columns
+##' @param b.gp.hat and se.gp.hat matrix of MLES for all J gene snp pairs
+##' 
+##' @param U.0kl L dimensional list of K dimensional list with prior covairnace matrix for each grid weight, prior covariance pair
+#install.packages("SQUAREM") note you'll need to have SQUAREM installed
+library("SQUAREM")
+
+L=10#use 10 grid weights, 12 factors of real, 2 PCS
+U.0kl=get.prior.covar.Ukl(P=2,L=nrow(omega.table),R=5,factors=12,omega.table)
+(K=length(U.0kl[[1]]))
+(L=length(U.0kl))
+```
+
+It might also be useful to generate one set of lists (i.e., a KxL component 'mega' list which concatenates all the componenet into a large object.
+
+```{r covarianc.mat.unlistedS,cache=TRUE}
+##' generate a KxL list where the first K elements correspond to omega1 times the first k, the second K elements correspond to ##' omega.2 times the second K, etc.
+covmat=unlist(U.0kl,recursive=FALSE)
+head(covmat[[1]])
+head(covmat[[K+2]]/omega.table[2,1])
+```
+
+Now we compute the likelihood.
+
+```{r lik.funcS,cache=TRUE}
+##' lik.func computes likelihood for each betahat
+##' @param b.mle Rx1 vector of mles
+##' @param V.gp.hat RxR matrix of standard errors
+##' @param U.0kl L dimensional list of K dimensional list with prior covairnace matrix for each grid weight, prior covariance pair
+
+
+lik.func=function(b.mle,V.gp.hat,covmat)
+{ sapply(seq(1:length(covmat)),function(x){dmvnorm(x=b.mle, sigma=covmat[[x]] + V.gp.hat)})
+ }
+```
+
+Here, I return a matrix of likelihoods for each componenet of the trainin set, in order to compute the hierachcical weights. REcall:
+
+
+Here the incomplete-data likelihood function is
+
+
+$$L(\mathbf{\pi};{\hat{\bm{b}},\mathbf{z}) = P({\hat{\bm{b}}},\mathbf{z}| \theta) = \prod_{j=1}^J \sum_{k,l=1}^{KL} \pi_{kl} \Pr(\hat{\bm{b}}| z_{j}=[k,l])$$
+
+
+Now, in order to estimate the hierarchical prior weights $\pi_{k,l}$ we compute the $KxL$ dimensional likelihood at each each gene snp pair $j$ by evaluating the probability of observing $\bm{\hat{\b}_{j}}$ given that we know the true $\bm{b_{j}}$ arises from component $k,l$: 
+
+$$
+\mathcal{L}(\mathbf{\pi_{kl}}; \hat{\bm{b}}_{j}, U_{0,k,l} \hat{V}_{j})\\
+&=\Pr(\hat{\bm{b}}_{j}| z_{j}=[k,l])\\
+&=\Norm_R(\hat{\bm{b}}_{j}; \bm{0}, U_{0kl'} + \hat{V}_{j}})
+$$
+
+
+Which means we form a $J$ $\times$ $KL$ dimensional matrix entitled `global.lik' in my .Rmd file,where in each row vector is the probability of the vector of observed MLEs given that the true $\b_{j}$ arose from element $K,L$, as specified by its corresponding prior covariance matrix $\mathbf{U_{0kl}}$ . You simply compute the probability from an $R$ dimensional multivariate normal with mean $\mathbf{0}$ and variance  $\mathbf{U_{0kl}}$ + $\mathbf{\hat{V}_{j}}$. I treat each of the $j$ rows as an i.i.d. sample from which to maximize the likelihood over using the mixEM algorithm. 
+
+
+```{r likmatgenerationS, cache=TRUE,eval=TRUE,echo=TRUE}
+##' return a matrix of likielihoods
+##' @param b.gp.hat J*R vector of mles for each of J snps
+##' @param J=dim(b.gp.hat)
+##' @param se.gp.hat J*R vector of standard erros for each of J snps
+library("mvtnorm")
+J=dim(b.gp.hat)[1]
+#J=1000
+tim=proc.time()
+lik.mat.simulated.sfa=t(sapply(seq(1:J),function(x){lik.func(b.mle=b.gp.hat[x,],V.gp.hat=diag(se.gp.hat[x,])^2,covmat)}))
+proc.time()-tim
+```
+
+
+```{r write.likS,eval=TRUE,cache=TRUE}
+##' @details write to at table for speed
+#="simulated_SFA"
+saveRDS(lik.mat.simulated.sfa,paste0("likelihood",A,".rds"))
+```
+
+
+```{r compute.weightsS,cache=TRUE}
+#="simulated_SFA"
+lik.mat.simulated.sfa=readRDS(paste0("likelihood",A,".rds"))
+library("SQUAREM")
+source("mixEm.R")
+
+
+#train=lik.mat.simulated.sfa[1:500,]
+#test=lik.mat.simulated.sfa[501:1000,]
+
+train=lik.mat.simulated.sfa[1:10000,]
+test=lik.mat.simulated.sfa[10001:50000,]
+
+##' @describeIn compute HM weights on training and test set for compoarsion
+pis=mixEM(matrix_lik=train,prior=rep(1,ncol(train)))
+pis2=mixEM(matrix_lik=test,prior=rep(1,ncol(test)))
+```
+
+Now, we can compare the likelihood of the whole data set (the test data set) using the HM weights from the training set.
+
+```{r comparetotal.liksS, cache=TRUE}
+##` @total.lik.sfa
+##' @details compute dot product as sum_k P(D,Z=K|Z=k) * p(Z=k) where p(Z=k) comes from test
+log.lik.sfa=log(test%*%pis$pihat)
+hist(log.lik.sfa)
+(sum(log.lik.sfa))
+
+```
+
+
+```{r save.pisS, cache=TRUE}
+#"simulated.SFA"
+names.vec=matrix(NA,nrow=K,ncol=L)
+for(l in 1:L){ 
+  for(k in 1:K){
+    names.vec[k,l]=paste0("k=",k,";l=",l)}}
+
+```
+
+
+We can make some plots to compare the weights between the test and train set.
+
+```{r comparing training and test weightsS,echo=FALSE,fig=TRUE,cache=TRUE}
+par(mfrow=c(2,1))
+barplot(pis$pihat,names=as.vector(names.vec),main="mixEM estimated pi,TRAIN simulated DATA",las=2,col=c(rep(1,K),rep(2,K),rep(3,K),rep(4,K),rep(5,K)),ylim=c(0,0.10))
+barplot(pis2$pihat,names=as.vector(names.vec),main="mixEM estimated pi, TEST simulated DATA",las=2,col=c(rep(1,K),rep(2,K),rep(3,K),rep(4,K),rep(5,K)),ylim=c(0,0.10))
+
+
+```
+
+
+##' Here, I plot by L
+```{r plotSKLweights,cache=TRUE}
+par(mfrow=c(3,2))
+for(l in 1:L){ 
+  i=l-1
+  start=(i*K+1)
+  end=(l*K)
+  barplot(pis$pihat[start:end],main="mixEM estimated pi",names=names.vec[start:end],las=2,col=c(1:14))
+}
+
+```
+
+We can see that the majority of the weight is put on the covariance matrix of t statistics, $X_{t}'X$ and the estimated covariance matrix, $V_{t,1..K}\lambda^{2} V_{t,1..K}'$ where here I use K = 13. Recall each V is a $43$ x $1$ vector. 
+
+I compare with naiive iteration, which simply weights the relative likelihood across individuals.
+
+```{r naiive.likelihood.gutcheckS,cache=TRUE}
+##' @param global.lik Computes the likelihood matrices for each component for each of j gene snp pairs
+##' @return global.sum Sums the likelihood for each component across j gene snp pairs
+##' @return global.norm Sums the likelihood for all components across all j pairs
+
+global.lik=lik.mat.simulated.sfa
+updated.weights=function(b.gp.hat,se.gp.hat,global.lik){
+  global.sums=as.matrix(colSums(global.lik))#relative importance of each componenet across all gene-snp pairs
+  global.norm=sum(global.sums)
+  return(updated.weights=global.sums/global.norm)}
+x=updated.weights(b.gp.hat,se.gp.hat,global.lik)
+barplot(as.vector(x),names=as.vector(names.vec),main="Normalized Likelihood at Each Component")
+
+
+```
+Here, I've plotted the relative importance of each component after one iteration with a uniform prior weight on each $\pi$.
+
+Recall:
+
+$$L(\beta_{j};k,l) = Pr(\hat{b}_{j} | k,l)$$
+$$=Pr(\hat{b}_{j}; 0, \omega^{2}_{l} U_{k} + \hat {V})$$
+
+
+
+$$w_{jkl} = \frac{\pi_{k,l} L(\beta_{j};k,l)}{\sum_{k,l} \pi_{k,l} L(\beta_{j};k,l)}$$
+
+
+We can then update our estimate of $\pi_{k,l}$ 
+
+
+$$\pi_{kl}^{i+1} = \frac{\sum_{j} w_{jkl}}{\sum_{j,k,l} w_{jkl}}$$
+
+
+
+We also need to compute the "posterior weights" corresponding to each prior covariance matrix, which is simply the likelihood evaluated at that componenet times the prior weigth, $pi_{k,l}$ normalized by the marginal likelihood over all components.
+
+$p(k=1,l=1|D)=$
+  $\frac{p(D|k=1,l=1)*p(k=1,l=1)}{p(D)}$
+  
+```{r post.weight.funcS,cache=TRUE,eval=TRUE,echo=TRUE}
+##' post.weight.func converts the matrix of likelihood for each gene snp pairs to matrix of posterior weights ##` for each componenet
+##' @param pis = object from EM output with prior weight P(Z=K) as computed from 
+##' @param lik.mat = a JxK matrix of likelihoods (may be training set) for the P(D|Z=K)
+##' @return a JxK vector of posterior weight
+
+post.weight.func=function(pis,lik.mat){d=t(apply(lik.mat,1,function(x){x*pis$pihat}))
+                                       marg=rowSums(d)
+                                       return(d/marg)}
+
+post.weights=as.matrix(post.weight.func(pis,lik.mat=lik.mat.simulated.sfa))
+saveRDS(post.weights,paste0("post.weight.",A,".Rds"))
+```
+
+```{r generate.array.total.comp.specific.posterior.quantitiesS, cache=TRUE,eval=TRUE}
+##' @param U.0kl = l dimensional list of k dimensional list of prior covariance matrices
+##' @param b.mle =  Rx1 vector of beta.hats
+##' @param V.gp.hat = Rx1 vector of standard errors
+##' @param covmat = LxK dimenstional (unlisted list) of prior covariance matrices
+##' @return post.means JxKxR array of posterior means, correspodning to the posterior mean ##' for the Jth individual in the Kth compoenent across all R tissues
+##' @return post.covs JxKxR array of posterior vars, correspodning to the posterior vars ##' for the Jth individual in the Kth compoenent across all R tissues
+##' @return post.ups JxKxR array of posterior tailprobs, corresponding to the marginal 
+##' upper tail probability for the Jth individual in the Kth compoenent across all R 
+##' @return post.ups JxKxR array of posterior tailprobs, corresponding to the marginal 
+##' upper  tail probability for the Jth individual in the Kth component across all R 
+##' @return post.nulls JxKxR array of posterior nullprobs, corresponding to the marginal 
+##'  "null probability"" for the Jth individual in the Kth component across all R 
+
+J=nrow(b.gp.hat)
+R=ncol(b.gp.hat)
+covmat=unlist(U.0kl,recursive=F)   
+K=length(covmat)
+
+tim=proc.time()
+post.means=array(NA,dim=c(J,K,R))
+post.covs=array(NA,dim=c(J,K,R))
+post.ups=array(NA,dim=c(J,K,R))
+post.nulls=array(NA,dim=c(J,K,R))
+post.downs=array(NA,dim=c(J,K,R))
+
+
+   for(j in 1:J){
+b.mle=as.vector(t(b.gp.hat[j,]))##turn i into a R x 1 vector
+V.gp.hat=diag(se.gp.hat[j,])^2
+V.gp.hat.inv <- solve(V.gp.hat)
+    for(k in 1:K){
+          
+   
+    U.gp1kl <- (post.b.gpkl.cov(V.gp.hat.inv, covmat[[k]]))
+    mu.gp1kl <- as.array(post.b.gpkl.mean(b.mle, V.gp.hat.inv, U.gp1kl))
+    post.means[j,k,]=mu.gp1kl
+    post.covs[j,k,]=as.array(diag(U.gp1kl))
+    for(r in 1:R){##` marginal calculation for each tissue in each component
+      if(post.covs[j,k,r]==0){###if the covariance matrix has entry 0, then p(null=1)
+       post.ups[j,k,r]=0#need to figure out how to make the list have individual entries
+         post.downs[j,k,r]=0
+        post.nulls[j,k,r]=1}
+        else{
+          post.ups[j,k,r]=pnorm(0,mean=mu.gp1kl[r],sd=sqrt(diag(U.gp1kl)[r]),lower.tail=F)
+         post.downs[j,k,r]=pnorm(0,mean=mu.gp1kl[r],sd=sqrt(diag(U.gp1kl)[r]),lower.tail=T)
+          post.nulls[j,k,r]=0}
+      }
+    }
+}
+
+proc.time()-tim
+
+### proc.time()-tim
+#    user   system  elapsed 
+#4016.206  853.387 4877.999 
+
+saveRDS(post.means,paste0("post.means",A,".rds"))
+saveRDS(post.covs,paste0("post.covs",A,".rds"))
+saveRDS(post.ups,paste0("post.ups",A,".rds"))
+saveRDS(post.downs,paste0("post.downs",A,".rds"))
+saveRDS(post.nulls,paste0("post.nulls",A,".rds"))
+```
+
+Now, we develop a function to compute the weighted posterior quantities as weighted by post weights, which as described above are proportion to the marginal likelihood evaluated at $\hat{\beta_{j}$ for each componenet  times the prior weight computed from the training set. 
+
+
+```{r check.to.assure.working.properly.for.nonzero.componenetsS,cache=TRUE}
+#"simulated.SFA"
+post.means=readRDS(file=paste0("post.means",A,".rds"))
+post.covs=readRDS(file=paste0("post.covs",A,".rds"))
+post.ups=readRDS(file=paste0("post.ups",A,".rds"))
+post.nulls=readRDS(file=paste0("post.nulls",A,".rds"))
+post.downs=readRDS(file=paste0("post.downs",A,".rds"))
+post.weights=readRDS(file=paste0("post.weight.",A,".rds"))
+
+##' error analysis to make sure the recording in the array is proper
+j=151
+k=110
+
+b.mle=as.vector(t(b.gp.hat[j,]))##turn i into a R x 1 vector
+V.gp.hat=diag(se.gp.hat[j,])^2
+V.gp.hat.inv <- solve(V.gp.hat)
+U.gp1kl <- (post.b.gpkl.cov(V.gp.hat.inv, covmat[[k]]))
+mu.gp1kl <- as.array(post.b.gpkl.mean(b.mle, V.gp.hat.inv, U.gp1kl))
+plot(post.means[j,k,],mu.gp1kl)
+plot(diag(U.gp1kl),post.covs[j,k,])
+
+rm(j)
+rm(k)
+
+```
+
+
+
+```{r weightedposteriorquanttitiesS, cache=TRUE}
+##' @description total.mean function appplied to each J: posterior weight [k] by post.means [k,1;R]
+##' @param post.weights JxK matrix of posterior weights
+##' @param post.*** JxKxR array of posterior *** across all individuals, all compoenents all tissues
+##' @return 1xR vector of weighted posterior means for an individual
+##check to make sure working properly
+post.means=readRDS(paste0("post.means",A,".rds"))
+post.weights=readRDS(paste0("post.weight.",A,".rds"))
+
+
+##@describe plot the Kth covariance matrix component for the Jth individual across all R tissues
+
+j=29
+(k=which.max(post.weights[j,]))
+(dim(post.means))
+(post.means[j,k,1:R]*post.weights[j,k])
+(weightedmeans=(as.matrix(post.means[j,,1:R]*post.weights[j,]))[k,])
+
+```
+
+
+Now that we've assured ourselves the weighting and array order is accurate, we can compute the total weighted mean and relevant posterior quanitties as the sum of the componenet specific probability times the posterior probability of that componenet, $\sum_{k} Posterior * P(Z=k|D)$
+
+```{r total.quantitiesS,cache=TRUE}
+##' @total.mean function Generate a KxR matrix for each gene snp pair of weighted 
+##' @describe posterior quantities, and then sum them get the total mean for each tissue, so  generate a 1xR vector for each gene-snp pair
+
+total.mean=function(j){weightedmeans=(as.matrix(post.means[j,,1:R]*post.weights[j,]))
+  colSums(weightedmeans)}
+total.up=function(j){colSums(as.matrix(post.ups[j,,1:R]*post.weights[j,]))}
+total.down=function(j){colSums(as.matrix(post.downs[j,,1:R]*post.weights[j,]))}
+total.null=function(j){colSums(as.matrix(post.nulls[j,,1:R]*post.weights[j,]))}
+
+
+
+dim(as.matrix(post.means[j,,1:R]*post.weights[j,]))
+total.mean(j)
+
+```
+
+Now that we have a function to compute the weighted posterior mean and relevant tail probabilities for each Gene-SNP pair, we can easily apply this to the whole data set.
+
+```{r compute.posterior.meens.wieghted.across.allcomponenetS,cache=TRUE,eval=TRUE}
+##' @description Generate Jx43 Matrix with posterior mean for each tissue
+##' @details apply total.mean to all J individuals.
+truth.table=read.table("/Users/sarahurbut/Dropbox/cyclingstatistician/beta_gp_continuous/trueprior/50186.full.truth.txt")
+##make sure to standardize the effect sizes##
+truth=cbind(truth.table[,1:3],truth.table[,9:13]/truth.table[,4:8])
+
+all.mus=t(sapply(seq(1:J),function(j){total.mean(j)}))
+all.upper=t(sapply(seq(1:J),function(j){total.up(j)}))
+all.lower=t(sapply(seq(1:J),function(j){total.down(j)}))
+all.nuller=t(sapply(seq(1:J),function(j){total.null(j)}))
+
+##' @details compare.func finds the maximum tail prob in each tissue and takes the ##` complements for lfsr
+compare.func=function(j){
+  as.matrix(apply(rbind(all.upper[j,],all.lower[j,]),2,function(j){1-max(j)}))}
+
+lfsr.mat=t(sapply(seq(1:J),function(j){compare.func(j)}))
+
+ #"simulatedSFA"
+ write.table(all.mus,paste0("post.mean.",A,".txt"))
+ write.table(all.upper,paste0("post.up.",A,".txt"))
+ write.table(all.lower,paste0("post.low.",A,".txt"))
+ write.table(all.nuller,paste0("post.null.",A,".txt"))
+ write.table(lfsr.mat,paste0("lfsr.",A,".txt"))
+
+```
+
+
+Now, we want to check that the arrays are multiplied correctly (i.e., that the kth componenet is multiplied by the kth posterior weights for the correct gene-snp pair)
+
+```{r checkpoint}
+##check componenet posterior mean computation
+##' @param names = tissue names
+##' @description posterior.means = JxR matrix of weighted posterior means 
+##' @description posterior.nulls = JxR matrix of weighted posterior null probabilities
+#mse.nosfa=sum(post.means-b.gp.hat[1001:5000,])^2
+#"simulatedSFA"
+posterior.means=as.matrix(read.table(paste0("post.mean.",A,".txt")))
+b.mle=as.vector(t(b.gp.hat[j,]))##turn i into a R x 1 vector
+                V.gp.hat=diag(se.gp.hat[j,])^2
+                V.gp.hat.inv <- solve(V.gp.hat)
+
+(U.gp1kl <- (post.b.gpkl.cov(V.gp.hat.inv, covmat[[k]])))
+(mu.gp1kl <- as.array(post.b.gpkl.mean(b.mle, V.gp.hat.inv, U.gp1kl)))
+
+post.means[j,k,] ##show that the biggest weighted componenet is close to true mean
+truth[j,]
+
+###`@ Check to make sure that weighting is applied accurately
+###` Consider the weights at all componenets for 1 gene snp pair (282, in the 2-4 configuration)
+post.weight.j=post.weights[j,]
+## Consider the means at all componenets for 1 gene snp pair
+post.means[j,,]##you can see that the kth componenet or the kth row of this matrix corresponds to the post.means[j,k,]
+## Compute product
+(post.weights[j,]%*%post.means[j,,])
+##compare to output of total mean matrix##
+(posterior.means[j,])
+(truth[j,])
+```
+
+We can compute the overall posterior mean for each gene-SNP pair across tissues (i.e., the weighted $R$ dimensional posterior mean vector of $mu_{j}$). Here, I do it for 10 gene SNP pairs.
+
+
+
+Now we can make some plots in which we compare the posterior means among tissues and compare with the mles. We can also compare the lfsr with the lfdr in each tissue.
+
+```{r make.some.plotsS,cache=TRUE}
+##' @param names = tissue names
+##' @description posterior.means = JxR matrix of weighted posterior means 
+##' @description posterior.nulls = JxR matrix of weighted posterior null probabilities
+#mse.nosfa=sum(post.means-b.gp.hat[1001:5000,])^2
+#"simulatedSFA"
+posterior.means=as.matrix(read.table(paste0("post.mean.",A,".txt")))
+lfsr.mat=as.matrix(read.table(paste0("lfsr.",A,".txt")))
+posterior.nulls=as.matrix(read.table(paste0("post.null.",A,".txt")))
+
+truth.table=read.table("/Users/sarahurbut/Dropbox/cyclingstatistician/beta_gp_continuous/trueprior/50186.full.truth.txt")
+##make sure to standardize the effect sizes##
+truth=cbind(truth.table[,1:3],truth.table[,9:13]/truth.table[,4:8])
+
+(mse.sfa=sum(posterior.means[10001:50000,]-truth[10001:50000,c(4:8)])^2/40000)
+
+
+
+(snps=sample(seq(1:J),10,replace=T,prob=rep(1/J,J)))
+J=nrow(posterior.means)
+
+
+
+#J=1000
+J=nrow(b.gp.hat)
+# (snps=sample(seq(1:J),10,replace=T,prob=rep(1/J,J)))
+# J=nrow(posterior.means)
+
+false=which(truth$config==0)
+real=which(truth$config!=0)
+snps=c(false[1:9],real[1:8])
+
+
+names=read.table("names.txt")
+
+for(x in 1:length(snps)){
+j=snps[x]
+#j=real[x]
+
+par(mfrow=c(1,1))
+#b=barplot(abs(posterior.means[j,]),main=paste0("PostTissueMeans,B_",j),col=c(1:R),las=2,names=names,ylim=c(0,max(abs(posterior.means[j,]))+0.05))
+
+b=barplot((posterior.means[j,]),main=paste0("PostTissueMeans,B_",j),col=c(2:(R+1)),las=2,names=names,ylim=c((min(posterior.means[j,])-0.05),(max(posterior.means[j,])+0.10)),ylab="PosteriorMean(TrueMean)")
+lfsr=lfsr.mat[j,]
+text(b, (posterior.means[j,]), labels=round(truth[j,c(4:8)],2), pos=3, offset=.5)
+legend("topright",legend=round(lfsr,2),col=c(2:(R+1)),pch=1,title="lfsr")
+
+b.mle=t(b.gp.hat[j,])
+a.m=abs(b.mle)
+a.p=abs(posterior.means[j,])
+low=min(a.m-0.01,a.p-0.01)
+high=max(a.m+0.01,a.p+0.01)
+plot(abs(b.mle),abs(posterior.means)[j,],main="PostMeanvsMLE",xlim=c(low,high),ylim=c(low,high),col=c(2:(R+1)),pch=15,)
+abline()
+
+true.m=as.numeric(truth[j,c(4:8)])
+plot(abs(true.m),abs(posterior.means[j,]),col=c(1:R),main="PostMeanvsTrueBeta")
+                                                                   
+abline(0,1)##concern because the order of magnitude diff, but prior weight heavy on (U.0kl[[2]][[3]]) which has very small avg. 
+
+}
+
+
+#(mse.sfa=sum(posterior.means[500:1000,]-truth[500:1000,c(4:8)])^2/J)
+(mse.sfa=sum(posterior.means[10001:50000,]-truth[10001:50000,c(4:8)])^2/nrow(test))
+#(mse.sfa=sum(all.mus[10001:50000,]-truth[10001:50000,c(4:8)])^2/J)
+
+B="simulatednoSFA"
+
+
+lfsr.nosfa=as.matrix(read.table(paste0("lfsr.",B,".txt")))
+
+par(mfrow=c(2,3))
+for( r in seq(1:R)){
+  plot(posterior.nulls[,r],lfsr.mat[,r],main=paste0("lfsr",r,"vs lfdr", r),xlim=c(0,1),ylim=c(0,1))
+  abline(0,1)
+}
+
+par(mfrow=c(2,3))
+for( r in seq(1:R)){
+  plot(lfsr.mat[,r],lfsr.nosfa[,r],main=paste0("lfsr.noSFA",r,"vs lfsr.with.SFA", r))
+}
+
+par(mfrow=c(2,3))
+for(r in seq(1:R)){
+  plot(truth[,r+3],posterior.means[,r],main=paste0("posterior.means",r,"vs true.mean", r))
+  abline(c(0,1),col="red")
+}
+
+
+
+sapply(seq(1:R),function(r){sum(lfsr.mat[,r]<=0.10)})
+
+##Show that the posterior mean shirnks the mle
+lapply(seq(1:R),function(r){
+  print(mean(abs(posterior.means[,r]<=abs(b.gp.hat[,r]))))
+  
+})
+
+```
+
+
+
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+summary(cars)
+```
+
+You can also embed plots, for example:
+
+```{r, echo=FALSE}
+plot(cars)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
